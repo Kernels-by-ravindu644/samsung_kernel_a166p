@@ -1009,6 +1009,10 @@ if [ -n "${DIST_CMDS}" ]; then
   fi
   set -x
   eval ${DIST_CMDS}
+
+  # Copy the build kernel images to DIST_DIR
+  cp "${WDIR}/out/target/product/a16xm/obj/KERNEL_OBJ/kernel-5.15/arch/arm64/boot/Image.gz" ${DIST_DIR}/
+  
   set +x
 fi
 
