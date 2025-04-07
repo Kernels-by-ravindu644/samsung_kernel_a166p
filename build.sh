@@ -1,4 +1,5 @@
 #!/bin/bash
+set -x
 
 echo -e "\n[INFO]: BUILD STARTED..!\n"
 
@@ -21,8 +22,7 @@ if [ ! -f ".requirements" ]; then
 
         curl -LO http://security.ubuntu.com/ubuntu/pool/universe/n/ncurses/libtinfo5_6.3-2ubuntu0.1_amd64.deb
         sudo dpkg -i libtinfo5_6.3-2ubuntu0.1_amd64.deb && rm libtinfo5_6.3-2ubuntu0.1_amd64.deb
-        touch .requirements
-    } > /dev/null 2>&1
+    } && touch .requirements
 fi
 
 
@@ -49,8 +49,7 @@ python scripts/gen_build_config.py \
   --kernel-defconfig a16xm_00_defconfig \
   --kernel-defconfig-overlays "entry_level.config S98901AA1.config S98901AA1_debug.config" \
   -m user \
-  -o ../out/target/product/a16xm/obj/KERNEL_OBJ/build.config \
-  > /dev/null 2>&1
+  -o ../out/target/product/a16xm/obj/KERNEL_OBJ/build.config
 
 export KBUILD_BUILD_USER="@ravindu644"
 
