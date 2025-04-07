@@ -10,11 +10,21 @@ git submodule init && git submodule update
 
 # Install the requirements for building the kernel when running the script for the first time
 if [ ! -f ".requirements" ]; then
-    sudo apt update && sudo apt install -y git device-tree-compiler lz4 xz-utils zlib1g-dev openjdk-17-jdk gcc g++ python3 python-is-python3 p7zip-full android-sdk-libsparse-utils erofs-utils \
-        default-jdk git gnupg flex bison gperf build-essential zip curl libc6-dev libncurses-dev libx11-dev libreadline-dev libgl1 libgl1-mesa-dev \
-        python3 make sudo gcc g++ bc grep tofrodos python3-markdown libxml2-utils xsltproc zlib1g-dev python-is-python3 libc6-dev libtinfo6 \
-        make repo cpio kmod openssl libelf-dev pahole libssl-dev libarchive-tools zstd --fix-missing && wget http://security.ubuntu.com/ubuntu/pool/universe/n/ncurses/libtinfo5_6.3-2ubuntu0.1_amd64.deb && sudo dpkg -i libtinfo5_6.3-2ubuntu0.1_amd64.deb && touch .requirements
+    echo -e "\n[INFO]: INSTALLING REQUIREMENTS..!\n"
+    {
+        sudo apt update
+        sudo apt install -y \
+            git device-tree-compiler lz4 xz-utils zlib1g-dev openjdk-17-jdk gcc g++ python3 python-is-python3 p7zip-full android-sdk-libsparse-utils erofs-utils \
+            default-jdk git gnupg flex bison gperf build-essential zip curl libc6-dev libncurses-dev libx11-dev libreadline-dev libgl1 libgl1-mesa-dev \
+            python3 make sudo gcc g++ bc grep tofrodos python3-markdown libxml2-utils xsltproc zlib1g-dev python-is-python3 libc6-dev libtinfo6 \
+            make repo cpio kmod openssl libelf-dev pahole libssl-dev libarchive-tools zstd --fix-missing
+
+        curl -LO http://security.ubuntu.com/ubuntu/pool/universe/n/ncurses/libtinfo5_6.3-2ubuntu0.1_amd64.deb
+        sudo dpkg -i libtinfo5_6.3-2ubuntu0.1_amd64.deb && rm libtinfo5_6.3-2ubuntu0.1_amd64.deb
+        touch .requirements
+    } > /dev/null 2>&1
 fi
+
 
 # Init Samsung's ndk
 if [[ ! -d "${WDIR}/kernel/prebuilts" || ! -d "${WDIR}/prebuilts" ]]; then
@@ -34,8 +44,13 @@ echo -e "CONFIG_LOCALVERSION_AUTO=n\nCONFIG_LOCALVERSION=\"-ravindu644-${BUILD_K
 # CHANGED DIR
 cd "${WDIR}/kernel-5.15"
 
-# Cook a build config
-python scripts/gen_build_config.py --kernel-defconfig a16xm_00_defconfig --kernel-defconfig-overlays "entry_level.config S98901AA1.config S98901AA1_debug.config" -m user -o ../out/target/product/a16xm/obj/KERNEL_OBJ/build.config
+# Cook the build config
+python scripts/gen_build_config.py \
+  --kernel-defconfig a16xm_00_defconfig \
+  --kernel-defconfig-overlays "entry_level.config S98901AA1.config S98901AA1_debug.config" \
+  -m user \
+  -o ../out/target/product/a16xm/obj/KERNEL_OBJ/build.config \
+  > /dev/null 2>&1
 
 export KBUILD_BUILD_USER="@ravindu644"
 
@@ -70,4 +85,3 @@ cd "${WDIR}/kernel"
 # Main cooking progress & copy the built kernel to "dist"
 ( env ${GKI_KERNEL_BUILD_OPTIONS} ./build/build.sh || exit 1 ) && \
   cp "${WDIR}/out/target/product/a16xm/obj/KERNEL_OBJ/kernel-5.15/arch/arm64/boot/Image"* "${WDIR}/dist"
-   
