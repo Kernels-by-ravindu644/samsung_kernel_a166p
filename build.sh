@@ -60,5 +60,7 @@ fi
 # CHANGED DIR
 cd "${WDIR}/kernel"
 
-# Main cooking progress
-env ${GKI_KERNEL_BUILD_OPTIONS} ./build/build.sh
+# Main cooking progress & copy the built kernel to "dist"
+( env ${GKI_KERNEL_BUILD_OPTIONS} ./build/build.sh || exit 1 ) && \
+  cp "${WDIR}/out/target/product/a16xm/obj/KERNEL_OBJ/kernel-5.15/arch/arm64/boot/Image"* "${WDIR}/dist"
+   
