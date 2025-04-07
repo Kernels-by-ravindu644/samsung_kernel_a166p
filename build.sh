@@ -68,6 +68,7 @@ export GKI_KERNEL_BUILD_OPTIONS="
 SKIP_MRPROPER=1 \
 KMI_SYMBOL_LIST_STRICT_MODE=0 \
 ABI_DEFINITION= \
+SKIP_EXT_MODULES=1 \
 BUILD_BOOT_IMG=1 \
 MKBOOTIMG_PATH=${WDIR}/external_prebuilts/mkbootimg/mkbootimg.py \
 KERNEL_BINARY=Image.gz \
@@ -78,12 +79,12 @@ AVB_BOOT_PARTITION_SIZE=67108864 \
 AVB_BOOT_KEY=${WDIR}/external_prebuilts/sign_keys/testkey_rsa2048.pem \
 AVB_BOOT_ALGORITHM=SHA256_RSA2048 \
 AVB_BOOT_PARTITION_NAME=boot \
-MKBOOTIMG_EXTRA_ARGS=\"--os_version 13.0.0 --os_patch_level 2025-01-00 --pagesize 4096\"
+MKBOOTIMG_EXTRA_ARGS="--os_version 13.0.0 --os_patch_level 2025-01-00 --pagesize 4096"
 "
 
 # Run menuconfig only if you want to.
 # It's better to use MAKE_MENUCONFIG=0 when everything is already properly enabled, disabled, or configured.
-export MAKE_MENUCONFIG=1
+export MAKE_MENUCONFIG=0
 
 if [ "$MAKE_MENUCONFIG" = "1" ]; then
     export HERMETIC_TOOLCHAIN=0
