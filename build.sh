@@ -79,7 +79,13 @@ AVB_BOOT_PARTITION_SIZE=67108864 \
 AVB_BOOT_KEY=${WDIR}/external_prebuilts/sign_keys/testkey_rsa2048.pem \
 AVB_BOOT_ALGORITHM=SHA256_RSA2048 \
 AVB_BOOT_PARTITION_NAME=boot \
-MKBOOTIMG_EXTRA_ARGS="--os_version 13.0.0 --os_patch_level 2025-01-00 --pagesize 4096"
+"
+
+# Build options (extra)
+export MKBOOTIMG_EXTRA_ARGS="
+    --os_version 13.0.0 \
+    --os_patch_level 2025-01-00 \
+    --pagesize 4096 \
 "
 
 # Run menuconfig only if you want to.
@@ -95,4 +101,7 @@ cd "${WDIR}/kernel"
 
 # Main cooking progress & copy the built kernel to "dist"
 ( env ${GKI_KERNEL_BUILD_OPTIONS} ./build/build.sh || exit 1 ) && \
-  cp "${WDIR}/out/target/product/a16xm/obj/KERNEL_OBJ/kernel-5.15/arch/arm64/boot/Image"* "${WDIR}/dist"
+
+    # Copy the kernel image and boot image to the dist directory
+    cp "${WDIR}/out/target/product/a16xm/obj/KERNEL_OBJ/kernel-5.15/arch/arm64/boot/Image"* "${WDIR}/dist" && \
+    cp "${WDIR}/out/target/product/a16xm/obj/KERNEL_OBJ/dist/boot.img" "${WDIR}/dist"
