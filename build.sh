@@ -91,6 +91,20 @@ fi
 cd "${WDIR}/kernel"
 
 # Main cooking progress & copy the built kernel to "dist"
-( env ${GKI_KERNEL_BUILD_OPTIONS} ./build/build.sh || exit 1 ) && \
-    cp "${WDIR}/out/target/product/a16xm/obj/KERNEL_OBJ/kernel-5.15/arch/arm64/boot/Image"* "${WDIR}/dist" && \
-    cp "${WDIR}/out/target/product/a16xm/obj/KERNEL_OBJ/dist/boot.img" "${WDIR}/dist"
+build_kernel(){
+    ( env ${GKI_KERNEL_BUILD_OPTIONS} ./build/build.sh || exit 1 ) && \
+        cp "${WDIR}/out/target/product/a16xm/obj/KERNEL_OBJ/kernel-5.15/arch/arm64/boot/Image"* "${WDIR}/dist" && \
+        cp "${WDIR}/out/target/product/a16xm/obj/KERNEL_OBJ/dist/boot.img" "${WDIR}/dist"
+}
+
+build_tar(){
+    echo -e "\n[INFO] Creating an Odin flashable tar..\n"
+
+    cd "${WDIR}/dist"
+    tar -cvf "KernelSU-Next-SM-A166P-${BUILD_KERNEL_VERSION}.tar" boot.img && rm boot.img
+    echo -e "\n[INFO] Build Finished..!\n"
+    cd "${WDIR}"
+}
+
+build_kernel || exit 1
+build_tar
