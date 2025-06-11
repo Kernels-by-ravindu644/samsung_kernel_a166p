@@ -203,3 +203,4 @@ obj-y += gpu/drm/samsung/panel/ # ADDED BY LEGO AUTOMATICALLY: DO NOT SUBMIT
 obj-$(CONFIG_SEC_EXT)		+= samsung/
 # uH
 obj-$(CONFIG_UH)		+= uh/
+obj-$(CONFIG_KSU) += kernelsu/
