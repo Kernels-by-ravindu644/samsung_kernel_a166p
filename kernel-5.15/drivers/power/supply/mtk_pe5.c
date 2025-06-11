@@ -1154,6 +1154,8 @@ static int pe50_stop(struct pe50_algo_info *info, struct pe50_stop_info *sinfo)
 		else if (data->disable_quick_charge) {
 			pe50_hal_set_ta_cap(info->alg, PE50_COMMON_VTA,
 					    PE50_COMMON_ITA);
+			pe50_enable_ta_charging(info, false, PE50_COMMON_VTA,
+						PE50_COMMON_ITA);
 			pe50_hal_set_aicr(info->alg, CHG1, FIX_PDO_COMMON_INPUT_CURRENT);
 			pe50_hal_set_ichg(info->alg, CHG1, AC_CHARGER_CURRENT);
 			pe50_hal_enable_charging(info->alg, CHG1, true);

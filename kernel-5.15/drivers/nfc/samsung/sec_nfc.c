@@ -371,7 +371,6 @@ int sec_nfc_i2c_probe(struct i2c_client *client)
         kfree(info->i2c_info.buf);
         return ret;
     }
-    hardwareinfo_set_prop(HARDWARE_NFC, "S3NRN4VXC1-MX30");
     pr_info("%s success\n", __func__);
     return 0;
 
@@ -676,6 +675,31 @@ extern int trig_nfc_sleep(void)
 EXPORT_SYMBOL(trig_nfc_sleep);
 #endif
 
+/* CONNECTIVITY.BT.Driver shaoqiangqiang 2024/10/18 Begain */
+enum sec_nfc_product{
+  SNFC_RN4V=0x86,
+  SNFC_SN4V,
+};
+
+static void sec_nfc_set_hw_info(enum sec_nfc_product snfc_products){
+
+    switch (snfc_products)
+    {
+    case SNFC_RN4V:
+        hardwareinfo_set_prop(HARDWARE_NFC, "S3NRN4VXC1-MX30");
+        break;
+    case SNFC_SN4V:
+        hardwareinfo_set_prop(HARDWARE_NFC, "S3NSN4VXC5-UX30");
+        break;
+    default:
+        hardwareinfo_set_prop(HARDWARE_NFC, "Unknown");
+        break;
+    }
+    pr_info("%s snfc_products is : 0x%02x\n", __func__, snfc_products);
+
+}
+/* CONNECTIVITY.BT.Driver shaoqiangqiang 2024/10/18 End */
+
 static long sec_nfc_ioctl(struct file *file, unsigned int cmd,
                             unsigned long arg)
 {
@@ -750,6 +774,11 @@ static long sec_nfc_ioctl(struct file *file, unsigned int cmd,
         is_shutdown = true;
         break;
 #endif
+    /* CONNECTIVITY.BT.Driver shaoqiangqiang 2024/10/18 Begain */
+    case SEC_NFC_HW_INFO:
+        sec_nfc_set_hw_info(new);
+        break;
+    /* CONNECTIVITY.BT.Driver shaoqiangqiang 2024/10/18 End */
     default:
         dev_err(info->dev, "Unknown ioctl 0x%x\n", cmd);
         ret = -ENOIOCTLCMD;

@@ -59,7 +59,8 @@
 
 #include "mtk_charger.h"
 
-#define STORE_MODE_CURRENT_LIMIT	100000
+#define STORE_MODE_CURRENT_LIMIT        500000
+#define STORE_MODE_INPUT_CURRENT_LIMIT  800000
 
 static int _uA_to_mA(int uA)
 {
@@ -191,15 +192,6 @@ static bool select_charging_current_limit(struct mtk_charger *info,
 		goto done;
 	}
 
-	/*store_mode charger current limit*/
-	if (batt_store_mode) {
-		pdata->charging_current_limit = STORE_MODE_CURRENT_LIMIT;
-		chr_err("store mode charge current limit : %d",
-							pdata->charging_current_limit);
-		is_basic = true;
-		goto done;
-	}
-
 	if (info->chr_type == POWER_SUPPLY_TYPE_USB &&
 	    info->usb_type == POWER_SUPPLY_USB_TYPE_SDP) {
 		pdata->input_current_limit =
@@ -240,6 +232,18 @@ static bool select_charging_current_limit(struct mtk_charger *info,
 		pdata->charging_current_limit =
 				info->data.usb_charger_current;
 		is_basic = true;
+	}
+
+	/*store_mode charger current limit*/
+	if (batt_store_mode) {
+		pdata->charging_current_limit = STORE_MODE_CURRENT_LIMIT;
+		if (pdata->input_current_limit <= 0) {
+			pdata->input_current_limit = STORE_MODE_INPUT_CURRENT_LIMIT;
+		}
+		chr_err("store mode charge current limit : %d",
+				pdata->charging_current_limit);
+		is_basic = true;
+		goto done;
 	}
 
 #ifdef CONFIG_AFC_CHARGER

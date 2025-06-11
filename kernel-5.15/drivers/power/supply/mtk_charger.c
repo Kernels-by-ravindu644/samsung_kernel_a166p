@@ -4248,6 +4248,10 @@ static ssize_t store_batt_full_capacity(
 		info->batt_full_capacity = POWER_SUPPLY_NO_ONEUI_CHG;
 	}
 	_wake_up_charger(info);
+
+	if (info->psy1 != NULL) {
+		power_supply_changed(info->psy1);
+	}
 	chr_err("%s: batt_full_capacity=%d\n", __func__, info->batt_full_capacity);
 
 	return size;

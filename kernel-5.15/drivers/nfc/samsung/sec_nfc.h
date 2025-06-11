@@ -52,6 +52,9 @@
 #define SEC_NFC_COLD_RESET      _IOW(SEC_NFC_MAGIC, 5, unsigned int)
 #define SEC_NFC_SHUTDOWN        _IOW(SEC_NFC_MAGIC, 6, unsigned int)
 #endif
+/* CONNECTIVITY.BT.Driver shaoqiangqiang 2024/10/18 Begain */
+#define SEC_NFC_HW_INFO         _IOW(SEC_NFC_MAGIC, 7, unsigned int)
+/* CONNECTIVITY.BT.Driver shaoqiangqiang 2024/10/18 End */
 
 /* size */
 #define SEC_NFC_MSG_MAX_SIZE    (256 + 4)

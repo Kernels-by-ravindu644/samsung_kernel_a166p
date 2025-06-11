@@ -39,6 +39,9 @@
 #define ONEUI_6P1_CHG_PROTECION_ENABLE
 #endif
 
+//#define WT_OPTIMIZE_USING_HYSTERESIS
+//#define WT_OPTIMIZE_USING_UI_TIME
+
 extern int chr_get_debug_level(void);
 //+S98901AA1,zhangjian.wt,modify,2024/07/31,Optimize charging mode
 extern struct blocking_notifier_head usb_tp_notifier_list;
@@ -117,6 +120,35 @@ struct charger_data;
 #define MAX_CHARGE_TEMP_MINUS_X_DEGREE	47
 
 #define MAX_ALG_NO 10
+
+enum current_level_enum {
+	CURRENT_LEVEL_NONE = 0,
+	CURRENT_LEVEL1,
+	CURRENT_LEVEL2,
+	CURRENT_LEVEL3,
+	CURRENT_LEVEL4,
+	CURRENT_LEVEL5,
+	CURRENT_LEVEL6,
+	CURRENT_LEVEL7,
+	CURRENT_LEVEL_MAX
+};
+
+enum calculate_time_state_enum {
+	CALCULATE_NONE_STATE = 0,
+	CALCULATE_INIT_STATE,
+	CALCULATE_CHARGING_STATE,
+	CALCULATE_FULL_STATE,
+	CALCULATE_PLUG_OUT_STATE,
+	CALCULATE_INVALID_STATE,
+	CALCULATE_STATEL_MAX
+};
+
+enum compensation_state_enum {
+	COMPENSATION_LEVEL_REDUCE_NORMAL = 0,
+	COMPENSATION_LEVEL_REDUCE_QUICK,
+	COMPENSATION_LEVEL_REDUCE_SLOW,
+	COMPENSATION_LEVEL_MAX
+};
 
 enum bat_temp_state_enum {
 	BAT_TEMP_LOW = 0,

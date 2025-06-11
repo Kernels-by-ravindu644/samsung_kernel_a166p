@@ -867,8 +867,13 @@ static enum power_supply_property battery_props[] = {
 #if defined (CONFIG_W3_CHARGER_PRIVATE)
 #define DESIGNED_CAPACITY 5000 //mAh
 #define CHARGE_FULL_SOC 100
+#define CHARGE_30_SOC 30
 #define CHARGE_50_SOC 50
+#define CHARGE_53_SOC 53
+#define CHARGE_75_SOC 75
 #define CHARGE_80_SOC 80
+#define CHARGE_90_SOC 90
+#define CHARGE_93_SOC 93
 #define DEADSOC_COEFFICIENT1 98
 #define DEADSOC_COEFFICIENT2 97
 #define DEADSOC_COEFFICIENT3 91
@@ -878,32 +883,31 @@ static enum power_supply_property battery_props[] = {
 #define CHARGE_STATE_CHANGE_SOC1 84
 #define CHARGE_STATE_CHANGE_SOC2 90
 #define CHARGE_STATE_CHANGE_SOC3 95
+#define CHARGE_STATE_CHANGE_SOC4 97
 
-#define CHARGE_PPS_5A_CC_CURRENT_THRESHOLD     4800
-#define CHARGE_PPS_4P5A_CC_CURRENT_THRESHOLD   4500
-#define CHARGE_PPS_4A_CC_CURRENT_THRESHOLD     4000
-#define CHARGE_PPS_3P5A_CC_CURRENT_THRESHOLD   3500
-#define CHARGE_PPS_3A_CC_CURRENT_THRESHOLD     3000
-#define CHARGE_PPS_2P5A_CC_CURRENT_THRESHOLD   2500
-#define CHARGE_PPS_2A_CC_CURRENT_THRESHOLD     2000
-#define CHARGE_PPS_1P5A_CC_CURRENT_THRESHOLD   1400
-#define CHARGE_PPS_1A_CC_CURRENT_THRESHOLD     1000
+#define CHARGE_PPS_5A_CC_CURRENT_THRESHOLD     4500
+#define CHARGE_PPS_4A_CC_CURRENT_THRESHOLD     3500
+#define CHARGE_PPS_3A_CC_CURRENT_THRESHOLD     2200
+#define CHARGE_PPS_2A_CC_CURRENT_THRESHOLD     1500
+#define CHARGE_PPS_1A_CC_CURRENT_THRESHOLD     900
 
-#define CHARGE_3A_CC_CURRENT_THRESHOLD         2000
+#define CHARGE_3A_CC_CURRENT_THRESHOLD         2200
 #define CHARGE_2A_CC_CURRENT_THRESHOLD         1600
 #define CHARGE_1A_CC_CURRENT_THRESHOLD         900
 
 #define CHARGE_CC_CURRENT_THRESHOLD 1700
 
-#define MAGIC_PPS_CHARGE_5A_CC_CURRENT1       4900
-#define MAGIC_PPS_CHARGE_4P5A_CC_CURRENT1     4700
-#define MAGIC_PPS_CHARGE_4A_CC_CURRENT1       4200
-#define MAGIC_PPS_CHARGE_3P5A_CC_CURRENT1     3700
-#define MAGIC_PPS_CHARGE_3A_CC_CURRENT1       3200
+#define MAGIC_PPS_CHARGE_5A_CC_CURRENT1       3500
+#define MAGIC_PPS_CHARGE_4A_CC_CURRENT1       3200
+#define MAGIC_PPS_CHARGE_4A_CC_CURRENT2       2800
+#define MAGIC_PPS_CHARGE_3P5A_CC_CURRENT1     2500
+#define MAGIC_PPS_CHARGE_3A_CC_CURRENT1       2200
+#define MAGIC_PPS_CHARGE_3A_CC_CURRENT2       2000
 #define MAGIC_PPS_CHARGE_2P5A_CC_CURRENT1     2700
-#define MAGIC_PPS_CHARGE_2A_CC_CURRENT1       2000
-#define MAGIC_PPS_CHARGE_1P5A_CC_CURRENT1     1500
-#define MAGIC_PPS_CHARGE_1A_CC_CURRENT1       1100
+#define MAGIC_PPS_CHARGE_2A_CC_CURRENT1       1800
+#define MAGIC_PPS_CHARGE_2A_CC_CURRENT2       1500
+#define MAGIC_PPS_CHARGE_1P5A_CC_CURRENT1     1600
+#define MAGIC_PPS_CHARGE_1A_CC_CURRENT1       1000
 
 #define MAGIC_CHARGE_3A_CC_CURRENT1 2200
 #define MAGIC_CHARGE_3A_CC_CURRENT2 2600
@@ -912,8 +916,9 @@ static enum power_supply_property battery_props[] = {
 #define MAGIC_CHARGE_2A_CC_CURRENT1 1800
 #define MAGIC_CHARGE_2A_CC_CURRENT2 1600
 #define MAGIC_CHARGE_2A_CC_CURRENT3 1700
+#define MAGIC_CHARGE_2A_CC_CURRENT4 1500
 
-#define MAGIC_CHARGE_1A_CC_CURRENT1 1100
+#define MAGIC_CHARGE_1A_CC_CURRENT1 1200
 #define MAGIC_CHARGE_1A_CC_CURRENT2 900
 
 #define MAGIC_CHARGE_CC_USB_CURRENT 380
@@ -921,6 +926,77 @@ static enum power_supply_property battery_props[] = {
 #define MAGIC_CHARGE_END_CV_CURRENT 600
 
 #define UPDATE_TO_FULL_INTERVAL_S 12
+#define RECHECK_DCP_INTERVAL_S 2
+
+#define WT_INTERMAL_TIME_STEP 10
+#define WT_INTERMAL_TIME_NORMAL 60
+#define WT_INTERMAL_TIME_LOW1 50
+#define WT_INTERMAL_TIME_LOW2 40
+#define WT_INTERMAL_TIME_HIGH1 70
+#define WT_INTERMAL_TIME_HIGH2 80
+#define WT_INTERMAL_TIME_HIGH3 90
+#define WT_INTERMAL_TIME_HIGH4 100
+#define WT_INTERMAL_TIME_HIGH5 110
+#define WT_INTERMAL_TIME_HIGH6 120
+#define WT_INTERMAL_TIME_HIGH7 180
+#define WT_INTERMAL_TIME_HIGH8 240
+#define WT_INTERMAL_TIME_HIGH9 300
+#define WT_INTERMAL_TIME_HIGH10 600
+#define WT_INTERMAL_TIME_MAX   2000
+
+#if defined (WT_OPTIMIZE_USING_HYSTERESIS)
+#define CURRENT_FALL_HYS_MA  100
+#define CURRENT_RISE_HYS_MA  50
+#else
+#define CURRENT_FALL_HYS_MA  0
+#define CURRENT_RISE_HYS_MA  0
+#endif
+
+#define ACG_CURRENT_SIZE 80
+int wt_avg_current[ACG_CURRENT_SIZE];
+int wt_current_sum = 0;
+
+static void init_avg_current(int vfgcurrent)
+{
+	int index = 0;
+	for (index = 0; index < ACG_CURRENT_SIZE; index++) {
+		wt_avg_current[index] = vfgcurrent;
+		//pr_err("%s: wt_avg_current[%d]=%d\n", __func__, index, wt_avg_current[index]);
+	}
+	wt_current_sum = vfgcurrent * ACG_CURRENT_SIZE;
+}
+
+static int calculate_avg_current(int vfgcurrent)
+{
+	int index = 0;
+	int current_value = vfgcurrent;
+
+	if (vfgcurrent <= 10)
+		return vfgcurrent;
+	if (wt_avg_current[ACG_CURRENT_SIZE-1] == -1) {
+		init_avg_current(current_value);
+		return current_value;
+	}
+
+	wt_current_sum -= wt_avg_current[index];
+
+	for (index = 0; index < (ACG_CURRENT_SIZE - 1); index++) {
+		wt_avg_current[index] = wt_avg_current[index+1];
+		//pr_err("%s: wt_avg_current[%d]=%d\n", __func__,index, wt_avg_current[index]);
+	}
+
+	wt_avg_current[index] = vfgcurrent;
+
+	//pr_err("%s: wt_avg_current[%d]=%d\n", __func__, index, wt_avg_current[index]);
+
+	wt_current_sum += wt_avg_current[index];
+
+	current_value = wt_current_sum / ACG_CURRENT_SIZE;
+
+	return current_value;
+
+}
+
 
 static int fulltime_get_sys_time(void)
 {
@@ -940,96 +1016,814 @@ static int fulltime_get_sys_time(void)
 static int select_apdo_magic_current(int fgcurrent, int capacity, int interval)
 {
 	int magic_current = MAGIC_CHARGE_CC_USB_CURRENT;
+	static int apdo_pre_magic_current = 0;
+	static int apdo_current_threshold = 0;
+	int apdo_init_avg_current = 0;
+	int current_fall_hys = CURRENT_FALL_HYS_MA;
+	int current_rise_hys = CURRENT_RISE_HYS_MA;
 
 	if (interval > UPDATE_TO_FULL_INTERVAL_S) {
-		if (fgcurrent > CHARGE_PPS_5A_CC_CURRENT_THRESHOLD) {
-			magic_current = MAGIC_PPS_CHARGE_5A_CC_CURRENT1;
-		} else if (fgcurrent > CHARGE_PPS_4P5A_CC_CURRENT_THRESHOLD) {
-			magic_current = MAGIC_PPS_CHARGE_4P5A_CC_CURRENT1;
+		 if (fgcurrent > CHARGE_PPS_5A_CC_CURRENT_THRESHOLD) {
+		 	if ((apdo_current_threshold == CURRENT_LEVEL2)
+				&& (fgcurrent < (CHARGE_PPS_5A_CC_CURRENT_THRESHOLD + current_rise_hys))) {
+				magic_current = apdo_pre_magic_current;
+			} else {
+				magic_current = MAGIC_PPS_CHARGE_5A_CC_CURRENT1;
+				apdo_current_threshold = CURRENT_LEVEL1;
+			}
 		} else if (fgcurrent > CHARGE_PPS_4A_CC_CURRENT_THRESHOLD) {
-			magic_current = MAGIC_PPS_CHARGE_4A_CC_CURRENT1;
-		} else if (fgcurrent > CHARGE_PPS_3P5A_CC_CURRENT_THRESHOLD) {
-			magic_current = MAGIC_PPS_CHARGE_3P5A_CC_CURRENT1;
+			if (((apdo_current_threshold == CURRENT_LEVEL1)
+				&& ((fgcurrent + current_fall_hys) >= CHARGE_PPS_5A_CC_CURRENT_THRESHOLD))
+				|| ((apdo_current_threshold == CURRENT_LEVEL3)
+				&& (fgcurrent < (CHARGE_PPS_4A_CC_CURRENT_THRESHOLD + current_rise_hys)))) {
+				magic_current = apdo_pre_magic_current;
+			} else {
+				magic_current = MAGIC_PPS_CHARGE_4A_CC_CURRENT1;
+				apdo_current_threshold = CURRENT_LEVEL2;
+			}
 		} else if (fgcurrent > CHARGE_PPS_3A_CC_CURRENT_THRESHOLD) {
-			magic_current = MAGIC_PPS_CHARGE_3A_CC_CURRENT1;
-		} else if (fgcurrent > CHARGE_PPS_2P5A_CC_CURRENT_THRESHOLD) {
-			magic_current = MAGIC_PPS_CHARGE_2P5A_CC_CURRENT1;
+			if (((apdo_current_threshold == CURRENT_LEVEL2)
+				&& ((fgcurrent + current_fall_hys) >= CHARGE_PPS_4A_CC_CURRENT_THRESHOLD))
+				|| ((apdo_current_threshold == CURRENT_LEVEL4)
+				&& (fgcurrent < (CHARGE_PPS_3A_CC_CURRENT_THRESHOLD + current_rise_hys)))) {
+				magic_current = apdo_pre_magic_current;
+			} else {
+				magic_current = MAGIC_PPS_CHARGE_3A_CC_CURRENT1;
+				apdo_current_threshold = CURRENT_LEVEL3;
+			}
 		} else if (fgcurrent > CHARGE_PPS_2A_CC_CURRENT_THRESHOLD) {
-			magic_current = MAGIC_PPS_CHARGE_2A_CC_CURRENT1;
-		} else if (fgcurrent > CHARGE_PPS_1P5A_CC_CURRENT_THRESHOLD) {
-			magic_current = MAGIC_PPS_CHARGE_1P5A_CC_CURRENT1;
+			if (((apdo_current_threshold == CURRENT_LEVEL3)
+				&& ((fgcurrent + current_fall_hys) >= CHARGE_PPS_3A_CC_CURRENT_THRESHOLD))
+				|| ((apdo_current_threshold == CURRENT_LEVEL5)
+				&& (fgcurrent < (CHARGE_PPS_2A_CC_CURRENT_THRESHOLD + current_rise_hys)))) {
+				magic_current = apdo_pre_magic_current;
+			} else {
+				magic_current = MAGIC_PPS_CHARGE_2A_CC_CURRENT1;
+				apdo_current_threshold = CURRENT_LEVEL4;
+			}
 		} else if (fgcurrent > CHARGE_PPS_1A_CC_CURRENT_THRESHOLD) {
-			magic_current = MAGIC_PPS_CHARGE_1A_CC_CURRENT1;
+			if (((apdo_current_threshold == CURRENT_LEVEL4)
+				&& ((fgcurrent + current_fall_hys) >= CHARGE_PPS_2A_CC_CURRENT_THRESHOLD))
+				|| ((apdo_current_threshold == CURRENT_LEVEL6)
+				&& (fgcurrent < (CHARGE_PPS_1A_CC_CURRENT_THRESHOLD + current_rise_hys)))) {
+				magic_current = apdo_pre_magic_current;
+			} else {
+				magic_current = MAGIC_PPS_CHARGE_1A_CC_CURRENT1;
+				apdo_current_threshold = CURRENT_LEVEL5;
+			}
 		} else if ((fgcurrent <= CHARGE_PPS_1A_CC_CURRENT_THRESHOLD) && (fgcurrent > 10)) {
-			magic_current = MAGIC_CHARGE_END_CV_CURRENT;
+			if (((apdo_current_threshold == CURRENT_LEVEL5)
+				&& ((fgcurrent + current_fall_hys) >= CHARGE_PPS_1A_CC_CURRENT_THRESHOLD))) {
+				magic_current = apdo_pre_magic_current;
+			} else {
+				magic_current = MAGIC_CHARGE_END_CV_CURRENT;
+				apdo_current_threshold = CURRENT_LEVEL6;
+			}
 		} else {
 			magic_current = MAGIC_CHARGE_CC_USB_CURRENT;
+			apdo_current_threshold = CURRENT_LEVEL7;
 		}
+		apdo_pre_magic_current = magic_current;
 	} else {
-		if (capacity < CHARGE_50_SOC) {
-			magic_current = MAGIC_PPS_CHARGE_4A_CC_CURRENT1;
+		if (capacity < CHARGE_53_SOC) {
+			magic_current = MAGIC_PPS_CHARGE_5A_CC_CURRENT1;
+			apdo_init_avg_current =  CHARGE_PPS_5A_CC_CURRENT_THRESHOLD;
 		} else if (capacity < CHARGE_80_SOC) {
-			magic_current = MAGIC_PPS_CHARGE_2P5A_CC_CURRENT1;
+			magic_current = MAGIC_PPS_CHARGE_4A_CC_CURRENT1;
+			apdo_init_avg_current =  CHARGE_PPS_4A_CC_CURRENT_THRESHOLD;
+		} else if (capacity < CHARGE_93_SOC) {
+			magic_current = MAGIC_PPS_CHARGE_2A_CC_CURRENT1;
+			apdo_init_avg_current =  magic_current;
 		} else {
 			magic_current = MAGIC_PPS_CHARGE_1A_CC_CURRENT1;
+			apdo_init_avg_current =  magic_current;
 		}
+
+		init_avg_current(apdo_init_avg_current);
+
+		apdo_pre_magic_current = 0;
+		apdo_current_threshold = 0;
 	}
+
+	pr_err("%s222: current_threshold=%d, pre_magic_current=%d\n",
+		__func__, apdo_current_threshold, apdo_pre_magic_current);
 
 	return magic_current;
 }
 
-static int select_basic_magic_current(int fgcurrent, int capacity)
+static int wt_get_charge_source(struct mtk_charger *pinfo)
 {
-	int magic_current = MAGIC_CHARGE_CC_USB_CURRENT;
-	struct mtk_battery *gm = get_mtk_battery();
+	int batt_charging_source = 0;
+	if (pinfo == NULL)
+		return SEC_BATTERY_CABLE_UNKNOWN;
 
-	if (fgcurrent > CHARGE_3A_CC_CURRENT_THRESHOLD) {
-		if (capacity < CHARGE_STATE_CHANGE_SOC1) {
-			magic_current = MAGIC_CHARGE_3A_CC_CURRENT1;
-		} else {
-			magic_current = MAGIC_CHARGE_3A_CC_CURRENT3;
-		}
-	} else if (fgcurrent > CHARGE_2A_CC_CURRENT_THRESHOLD) {
-		if (capacity < CHARGE_STATE_CHANGE_SOC2) {
-			magic_current = MAGIC_CHARGE_2A_CC_CURRENT1;
-		} else {
-			magic_current = MAGIC_CHARGE_2A_CC_CURRENT2;
-		}
-	} else if (fgcurrent > CHARGE_1A_CC_CURRENT_THRESHOLD) {
-		if (capacity < CHARGE_STATE_CHANGE_SOC3) {
-			magic_current = MAGIC_CHARGE_1A_CC_CURRENT1;
-		} else {
-			magic_current = MAGIC_CHARGE_1A_CC_CURRENT2;
-		}
-	} else if ((fgcurrent <= CHARGE_1A_CC_CURRENT_THRESHOLD) && (fgcurrent > 10)) {
-		if (POWER_SUPPLY_TYPE_USB == gm->chr_type) {
-			magic_current = MAGIC_CHARGE_CC_USB_CURRENT;
-		} else {
-			magic_current = MAGIC_CHARGE_END_CV_CURRENT;
-		}
+	if (pinfo->chr_type == POWER_SUPPLY_TYPE_USB &&
+		pinfo->usb_type == POWER_SUPPLY_USB_TYPE_SDP) {
+		batt_charging_source = SEC_BATTERY_CABLE_USB;
+	} else if (pinfo->pd_type == MTK_PD_CONNECT_PE_READY_SNK_APDO) {
+		batt_charging_source = SEC_BATTERY_CABLE_PDIC_APDO;
+	} else if (pinfo->pd_type == MTK_PD_CONNECT_PE_READY_SNK_PD30) {
+		batt_charging_source = SEC_BATTERY_CABLE_PDIC;
+#ifdef CONFIG_AFC_CHARGER
+	} else if (afc_get_is_connect(pinfo)) {
+		batt_charging_source = SEC_BATTERY_CABLE_9V_TA;
+#endif
+	} else if (pinfo->chr_type == POWER_SUPPLY_TYPE_USB_CDP) {
+		batt_charging_source = SEC_BATTERY_CABLE_USB_CDP;
+	}  else if (pinfo->chr_type == POWER_SUPPLY_TYPE_USB_DCP) {
+		batt_charging_source = SEC_BATTERY_CABLE_TA;
+	} else if (pinfo->chr_type == POWER_SUPPLY_TYPE_USB &&
+		pinfo->usb_type == POWER_SUPPLY_USB_TYPE_DCP) {
+		batt_charging_source = SEC_BATTERY_CABLE_UNKNOWN;
 	} else {
-		magic_current = MAGIC_CHARGE_CC_USB_CURRENT;
+		batt_charging_source = SEC_BATTERY_CABLE_UNKNOWN;
 	}
 
+	return batt_charging_source;
+}
+
+static int select_basic_magic_current(int fgcurrent,
+			int capacity, struct mtk_charger *pinfo, int interval)
+{
+	int magic_current = MAGIC_CHARGE_CC_USB_CURRENT;
+	int batt_charging_source = 0;
+	static int pre_magic_current = 0;
+	static int current_threshold = 0;
+	int current_fall_hys = CURRENT_FALL_HYS_MA;
+	int current_rise_hys = CURRENT_RISE_HYS_MA;
+
+	if (interval > UPDATE_TO_FULL_INTERVAL_S) {
+		pr_err("%s111: current_threshold=%d, pre_magic_current=%d\n",
+			__func__, current_threshold, pre_magic_current);
+		if (fgcurrent > CHARGE_3A_CC_CURRENT_THRESHOLD) {
+			if ((current_threshold == CURRENT_LEVEL2)
+				&& ((fgcurrent - current_rise_hys) < CHARGE_3A_CC_CURRENT_THRESHOLD)) {
+				magic_current = pre_magic_current;
+			} else {
+				if (capacity < CHARGE_STATE_CHANGE_SOC1) {
+					magic_current = MAGIC_CHARGE_3A_CC_CURRENT1;
+				} else {
+					magic_current = MAGIC_CHARGE_3A_CC_CURRENT3;
+				}
+				current_threshold = CURRENT_LEVEL1;
+			}
+		} else if (fgcurrent > CHARGE_2A_CC_CURRENT_THRESHOLD) {
+			if (((current_threshold == CURRENT_LEVEL1)
+				&& ((fgcurrent + current_fall_hys) >= CHARGE_3A_CC_CURRENT_THRESHOLD))
+				|| ((current_threshold == CURRENT_LEVEL3)
+				&& ((fgcurrent - current_rise_hys) < CHARGE_2A_CC_CURRENT_THRESHOLD))) {
+				magic_current = pre_magic_current;
+			} else {
+				if (capacity < CHARGE_STATE_CHANGE_SOC2) {
+					magic_current = MAGIC_CHARGE_2A_CC_CURRENT1;
+				} else {
+					magic_current = MAGIC_CHARGE_2A_CC_CURRENT2;
+				}
+				current_threshold = CURRENT_LEVEL2;
+			}
+		} else if (fgcurrent > CHARGE_1A_CC_CURRENT_THRESHOLD) {
+			if (((current_threshold == CURRENT_LEVEL2)
+				&& ((fgcurrent + current_fall_hys) >= CHARGE_2A_CC_CURRENT_THRESHOLD))
+				|| ((current_threshold == CURRENT_LEVEL4)
+				&& ((fgcurrent - current_rise_hys) < CHARGE_1A_CC_CURRENT_THRESHOLD))) {
+				magic_current = pre_magic_current;
+			} else {
+				if (capacity < CHARGE_STATE_CHANGE_SOC3) {
+					magic_current = MAGIC_CHARGE_1A_CC_CURRENT1;
+				} else {
+					magic_current = MAGIC_CHARGE_1A_CC_CURRENT2;
+				}
+				current_threshold = CURRENT_LEVEL3;
+			}
+		} else if ((fgcurrent <= CHARGE_1A_CC_CURRENT_THRESHOLD) && (fgcurrent > 10)) {
+			if ((current_threshold == CURRENT_LEVEL3)
+				&& ((fgcurrent + current_fall_hys) >= CHARGE_1A_CC_CURRENT_THRESHOLD)) {
+				magic_current = pre_magic_current;
+			} else {
+				if (pinfo && pinfo->chr_type == POWER_SUPPLY_TYPE_USB) {
+					magic_current = MAGIC_CHARGE_CC_USB_CURRENT;
+				} else {
+					magic_current = MAGIC_CHARGE_END_CV_CURRENT;
+				}
+				current_threshold = CURRENT_LEVEL4;
+			}
+		} else {
+			magic_current = MAGIC_CHARGE_CC_USB_CURRENT;
+			current_threshold = CURRENT_LEVEL5;
+		}
+		pre_magic_current = magic_current;
+	} else {
+		if (pinfo) {
+			batt_charging_source = wt_get_charge_source(pinfo);
+		}
+		pr_err("%s: batt_charging_source=%d\n", __func__, batt_charging_source);
+		switch (batt_charging_source) {
+			case SEC_BATTERY_CABLE_TA:
+			case SEC_BATTERY_CABLE_USB_CDP:
+				if (capacity < CHARGE_90_SOC) {
+					magic_current = MAGIC_CHARGE_1A_CC_CURRENT1;
+				} else {
+					magic_current = MAGIC_CHARGE_END_CV_CURRENT;
+				}
+				break;
+			case SEC_BATTERY_CABLE_PDIC_APDO:
+				if (!pinfo->disable_quick_charge) {
+					pr_err("%s: Invalid: logic error\n", __func__);
+					magic_current = MAGIC_PPS_CHARGE_3A_CC_CURRENT1;
+					break;
+				}
+			case SEC_BATTERY_CABLE_9V_TA:
+			case SEC_BATTERY_CABLE_PDIC:
+				if (pinfo->disable_quick_charge) {
+					if (capacity < CHARGE_STATE_CHANGE_SOC2) {
+						magic_current = MAGIC_CHARGE_2A_CC_CURRENT4;
+					} else if (capacity < CHARGE_STATE_CHANGE_SOC3) {
+						magic_current = MAGIC_CHARGE_1A_CC_CURRENT1;
+					} else {
+						magic_current = MAGIC_CHARGE_1A_CC_CURRENT2;
+					}
+				} else {
+					if (capacity < CHARGE_STATE_CHANGE_SOC1) {
+						magic_current = MAGIC_CHARGE_3A_CC_CURRENT1;
+					} else if (capacity < CHARGE_STATE_CHANGE_SOC2) {
+						magic_current = MAGIC_CHARGE_2A_CC_CURRENT1;
+					} else if (capacity < CHARGE_STATE_CHANGE_SOC3) {
+						magic_current = MAGIC_CHARGE_2A_CC_CURRENT4;
+					} else if (capacity < CHARGE_STATE_CHANGE_SOC4) {
+						magic_current = MAGIC_CHARGE_1A_CC_CURRENT1;
+					} else {
+						magic_current = MAGIC_CHARGE_END_CV_CURRENT;
+					}
+				}
+				break;
+			case SEC_BATTERY_CABLE_USB:
+				magic_current = MAGIC_CHARGE_CC_USB_CURRENT;
+				break;
+			default:
+				magic_current = MAGIC_CHARGE_CC_USB_CURRENT;
+				break;
+		}
+
+		init_avg_current(magic_current);
+		pre_magic_current = 0;
+		current_threshold = 0;
+	}
+	pr_err("%s222: current_threshold=%d, pre_magic_current=%d\n",
+		__func__, current_threshold, pre_magic_current);
 	return magic_current;
+}
+
+static int wt_get_battery_current(struct mtk_battery *gm)
+{
+	int fgcurrent = 0;
+	int curr_now = 0;
+	int ret = 0;
+
+	if (gm == NULL)
+		return -1;
+	ret = gauge_get_property_control(gm, GAUGE_PROP_BATTERY_CURRENT,
+			&curr_now, 1);
+
+	if (ret == -EHOSTDOWN) {
+		fgcurrent = gm->ibat / 10;
+	} else {
+		fgcurrent = curr_now / 10;
+		gm->ibat = curr_now;
+	}
+
+	return fgcurrent;
+}
+
+static int wt_get_battery_remain_mah(struct mtk_battery *gm,
+						struct mtk_charger *pinfo, int soc)
+{
+	int remain_ui = 0;
+	int capacity = 0;
+	int remain_mah = 0;
+	int deadsoc_coefficient = DEADSOC_COEFFICIENT1;
+
+	if (gm == NULL)
+		return -1;
+
+	if (pinfo == NULL)
+		return -1;
+
+	capacity = soc;
+	if (capacity < 0) {
+		return -1;
+	}
+
+	if (gm->bat_cycle < 199) {
+		deadsoc_coefficient = DEADSOC_COEFFICIENT1;
+	} else if (gm->bat_cycle < 249) {
+		deadsoc_coefficient = DEADSOC_COEFFICIENT2;
+	} else if (gm->bat_cycle < 299) {
+		deadsoc_coefficient = DEADSOC_COEFFICIENT3;
+	} else if (gm->bat_cycle < 1000) {
+		deadsoc_coefficient = DEADSOC_COEFFICIENT4;
+	} else {
+		deadsoc_coefficient = DEADSOC_COEFFICIENT5;
+	}
+
+	remain_ui = CHARGE_FULL_SOC - capacity;
+#if defined (ONEUI_6P1_CHG_PROTECION_ENABLE)
+	if (pinfo->batt_full_capacity > POWER_SUPPLY_CAPACITY_100) {
+		if (capacity >= CHARGE_80_SOC) {
+			//time_to_charge_full = 0;
+			//return time_to_charge_full;
+			capacity = CHARGE_80_SOC;
+		}
+		remain_ui = CHARGE_80_SOC - capacity;
+	}
+#endif
+
+	remain_mah = DESIGNED_CAPACITY * deadsoc_coefficient * remain_ui / 100 / 100;
+	return remain_mah;
+}
+
+
+static int wt_get_slow_update_th(int wt_initial_time_interval,
+					int time_to_full_update_th, int capacity)
+{
+	int time_to_full_update_th_new = WT_INTERMAL_TIME_NORMAL;
+	int wt_time_to_full_update_max = WT_INTERMAL_TIME_NORMAL;
+
+	if (capacity <= 70) {
+		if (wt_initial_time_interval < 900) {
+			wt_time_to_full_update_max = WT_INTERMAL_TIME_NORMAL;
+		} else if (wt_initial_time_interval < 1500) {
+			wt_time_to_full_update_max = WT_INTERMAL_TIME_HIGH1;
+		} else {
+			wt_time_to_full_update_max = WT_INTERMAL_TIME_HIGH2;
+		}
+	} else if (capacity <= 80) {
+		if (wt_initial_time_interval < 480) {
+			wt_time_to_full_update_max = WT_INTERMAL_TIME_NORMAL;
+		} else if (wt_initial_time_interval < 900) {
+			wt_time_to_full_update_max = WT_INTERMAL_TIME_HIGH1;
+		} else if (wt_initial_time_interval < 1200) {
+			wt_time_to_full_update_max = WT_INTERMAL_TIME_HIGH2;
+		} else {
+			wt_time_to_full_update_max = WT_INTERMAL_TIME_HIGH3;
+		}
+	} else if (capacity < 95) {
+		if (wt_initial_time_interval < 120) {
+			wt_time_to_full_update_max = WT_INTERMAL_TIME_NORMAL;
+		} else if (wt_initial_time_interval < 300) {
+			wt_time_to_full_update_max = WT_INTERMAL_TIME_HIGH1;
+		} else {
+			wt_time_to_full_update_max = WT_INTERMAL_TIME_HIGH3;
+		}
+	} else {
+		wt_time_to_full_update_max = WT_INTERMAL_TIME_HIGH3;
+	}
+
+	if (time_to_full_update_th <= wt_time_to_full_update_max) {
+		time_to_full_update_th_new = time_to_full_update_th + WT_INTERMAL_TIME_STEP;
+	} else {
+		time_to_full_update_th_new = wt_time_to_full_update_max + WT_INTERMAL_TIME_STEP;
+	}
+	pr_err("%s: time_th=%d, time_th_new=%d, wt_time_max=%d\n",
+		__func__, time_to_full_update_th,
+		time_to_full_update_th_new,	wt_time_to_full_update_max);
+	return time_to_full_update_th_new;
+
+}
+
+static int wt_check_slow_critical_update_th(int ui_raw_time_diff,
+					int ui_time_to_full, int capacity, int critical_soc)
+{
+	int time_to_full_update_th = -1;
+
+	if (capacity >= critical_soc) {
+		if (ui_time_to_full < 300) {
+			if (ui_raw_time_diff >= 2000) {
+				time_to_full_update_th = WT_INTERMAL_TIME_HIGH9;
+			} else if (ui_raw_time_diff >= 1500) {
+				time_to_full_update_th = WT_INTERMAL_TIME_HIGH8;
+			} else if (ui_raw_time_diff >= 1000) {
+				time_to_full_update_th = WT_INTERMAL_TIME_HIGH7;
+			} else if (ui_raw_time_diff >= 600) {
+				time_to_full_update_th = WT_INTERMAL_TIME_HIGH6;
+			} else if (ui_raw_time_diff >= 300) {
+				time_to_full_update_th = WT_INTERMAL_TIME_HIGH5;
+			} else	if (ui_raw_time_diff >= 100) {
+				time_to_full_update_th = WT_INTERMAL_TIME_HIGH2;
+			}
+		} else if (ui_time_to_full < 660) {
+			if (ui_raw_time_diff >= 2000) {
+				time_to_full_update_th = WT_INTERMAL_TIME_HIGH8;
+			} else if (ui_raw_time_diff >= 1500) {
+				time_to_full_update_th = WT_INTERMAL_TIME_HIGH7;
+			} else if (ui_raw_time_diff >= 1000) {
+				time_to_full_update_th = WT_INTERMAL_TIME_HIGH6;
+			} else if (ui_raw_time_diff >= 300) {
+				time_to_full_update_th = WT_INTERMAL_TIME_HIGH5;
+			} else	if (ui_raw_time_diff >= 100) {
+				time_to_full_update_th = WT_INTERMAL_TIME_HIGH2;
+			}
+		} else if (ui_time_to_full < 1000) {
+			if (ui_raw_time_diff >= 2000) {
+				time_to_full_update_th = WT_INTERMAL_TIME_HIGH7;
+			} else if (ui_raw_time_diff >= 1500) {
+				time_to_full_update_th = WT_INTERMAL_TIME_HIGH6;
+			} else if (ui_raw_time_diff >= 600) {
+				time_to_full_update_th = WT_INTERMAL_TIME_HIGH5;
+			} else	if (ui_raw_time_diff >= 100) {
+				time_to_full_update_th = WT_INTERMAL_TIME_HIGH2;
+			}
+		}
+	}
+
+	pr_err("%s: time_th=%d\n", __func__, time_to_full_update_th);
+	return time_to_full_update_th;
+}
+
+static int wt_get_quick_update_th(int wt_initial_time_interval,
+					int time_to_full_update_th, int capacity)
+{
+	int time_to_full_update_th_new = WT_INTERMAL_TIME_NORMAL;
+	int wt_time_to_full_update_max = WT_INTERMAL_TIME_NORMAL;
+
+	if (capacity <= 70) {
+		if (wt_initial_time_interval < 900) {
+			wt_time_to_full_update_max = WT_INTERMAL_TIME_NORMAL;
+		} else {
+			wt_time_to_full_update_max = WT_INTERMAL_TIME_LOW1;
+		}
+	} else if (capacity <= 80) {
+		if (wt_initial_time_interval < 480) {
+			wt_time_to_full_update_max = WT_INTERMAL_TIME_NORMAL;
+		} else {
+			wt_time_to_full_update_max = WT_INTERMAL_TIME_LOW1;
+		}
+	} else if (capacity < 95) {
+		if (wt_initial_time_interval < 120) {
+			wt_time_to_full_update_max = WT_INTERMAL_TIME_NORMAL;
+		} else {
+			wt_time_to_full_update_max = WT_INTERMAL_TIME_LOW1;
+		}
+	} else {
+		wt_time_to_full_update_max = WT_INTERMAL_TIME_LOW1;
+	}
+
+	if (time_to_full_update_th >= wt_time_to_full_update_max) {
+		time_to_full_update_th_new = time_to_full_update_th - WT_INTERMAL_TIME_STEP;
+	} else {
+		time_to_full_update_th_new = wt_time_to_full_update_max - WT_INTERMAL_TIME_STEP;
+	}
+
+	pr_err("%s: time_th=%d, time_th_new=%d, wt_time_max=%d\n",
+		__func__, time_to_full_update_th,
+		time_to_full_update_th_new,	wt_time_to_full_update_max);
+	return time_to_full_update_th_new;
+
+}
+
+static int wt_check_quick_critical_offset(int ui_raw_time_diff,
+					int raw_time_to_full, int capacity, int critical_soc)
+{
+	int wt_time_to_full_offset = -1;
+
+	if (capacity >= critical_soc) {
+		if (raw_time_to_full < 300) {
+			if (ui_raw_time_diff >= 600) {
+				wt_time_to_full_offset = WT_INTERMAL_TIME_HIGH6;
+			} else if (ui_raw_time_diff >= 400) {
+				wt_time_to_full_offset = WT_INTERMAL_TIME_HIGH5;
+			} else if (ui_raw_time_diff >= 200) {
+				wt_time_to_full_offset = WT_INTERMAL_TIME_HIGH4;
+			} else if (ui_raw_time_diff >= 120) {
+				wt_time_to_full_offset = WT_INTERMAL_TIME_HIGH2;
+			}
+		} else if (raw_time_to_full < 660) {
+			if (ui_raw_time_diff >= 600) {
+				wt_time_to_full_offset = WT_INTERMAL_TIME_HIGH5;
+			} else if (ui_raw_time_diff >= 300) {
+				wt_time_to_full_offset = WT_INTERMAL_TIME_HIGH4;
+			}
+		} else if (raw_time_to_full < 1000) {
+			if (ui_raw_time_diff >= 600) {
+				wt_time_to_full_offset = WT_INTERMAL_TIME_HIGH4;
+			} else if (ui_raw_time_diff >= 300) {
+				wt_time_to_full_offset = WT_INTERMAL_TIME_HIGH3;
+			}
+		}
+	}
+
+	pr_err("%s: time_offset=%d\n", __func__, wt_time_to_full_offset);
+	return wt_time_to_full_offset;
+
+}
+
+static int wt_check_min_remain_time(struct mtk_charger *pinfo,
+					int ui_time_to_full, int capacity)
+{
+	int batt_charging_source = 0;
+	int time_to_full_update_th = -1;
+	int ui_time_to_full_min1 = 0;
+	int ui_time_to_full_min2 = 0;
+	int ui_time_to_full_min3 = 0;
+	int ui_time_to_full_min4 = 0;
+	int ui_time_to_full_min5 = 0;
+	bool is_protection_mode = false;
+	bool disable_quick_charge = false;
+
+	if (pinfo == NULL)
+		return -1;
+
+	disable_quick_charge = pinfo->disable_quick_charge;
+
+#if defined (ONEUI_6P1_CHG_PROTECION_ENABLE)
+	if (pinfo->batt_full_capacity > POWER_SUPPLY_CAPACITY_100) {
+		is_protection_mode = true;
+	}
+#endif
+
+	if (pinfo) {
+		batt_charging_source = wt_get_charge_source(pinfo);
+	}
+
+	if ((disable_quick_charge)
+		&& ((batt_charging_source == SEC_BATTERY_CABLE_PDIC_APDO)
+		|| (batt_charging_source == SEC_BATTERY_CABLE_9V_TA)
+		|| (batt_charging_source == SEC_BATTERY_CABLE_PDIC))) {
+		if (is_protection_mode) {
+			ui_time_to_full_min1 = 4200;
+			ui_time_to_full_min2 = 3300;
+			ui_time_to_full_min3 = 2160;
+			ui_time_to_full_min4 = 1080;
+			ui_time_to_full_min5 = 360;
+		} else {
+			ui_time_to_full_min1 = 4200;
+			ui_time_to_full_min2 = 3300;
+			ui_time_to_full_min3 = 2160;
+			ui_time_to_full_min4 = 1200;
+			ui_time_to_full_min5 = 480;
+		}
+	} else if (pinfo->pd_type == MTK_PD_CONNECT_PE_READY_SNK_APDO) {
+		if (is_protection_mode) {
+			ui_time_to_full_min1 = 2160;
+			ui_time_to_full_min2 = 1380;
+			ui_time_to_full_min3 = 900;
+			ui_time_to_full_min4 = 480;
+			ui_time_to_full_min5 = 240;
+		} else {
+			ui_time_to_full_min1 = 2160;
+			ui_time_to_full_min2 = 1740;
+			ui_time_to_full_min3 = 1320;
+			ui_time_to_full_min4 = 900;
+			ui_time_to_full_min5 = 480;
+		}
+	} else {
+		if ((batt_charging_source == SEC_BATTERY_CABLE_9V_TA)
+			|| (batt_charging_source == SEC_BATTERY_CABLE_PDIC)) {
+			if (is_protection_mode) {
+				ui_time_to_full_min1 = 2760;
+				ui_time_to_full_min2 = 2160;
+				ui_time_to_full_min3 = 1500;
+				ui_time_to_full_min4 = 660;
+				ui_time_to_full_min5 = 300;
+			} else {
+				ui_time_to_full_min1 = 2760;
+				ui_time_to_full_min2 = 2160;
+				ui_time_to_full_min3 = 1560;
+				ui_time_to_full_min4 = 900;
+				ui_time_to_full_min5 = 480;
+			}
+		} else {
+			ui_time_to_full_min1 = 4800;
+			ui_time_to_full_min2 = 3900;
+			ui_time_to_full_min3 = 2460;
+			ui_time_to_full_min4 = 1380;
+			ui_time_to_full_min5 = 600;
+		}
+	}
+	pr_err("%s: ui_time_to_full_min1=%d, ui_time_to_full_min2=%d, ui_time_to_full_min3=%d, ui_time_to_full_min4=%d, ui_time_to_full_min5=%d\n",
+		__func__, ui_time_to_full_min1, ui_time_to_full_min2,
+		ui_time_to_full_min3, ui_time_to_full_min4,
+		ui_time_to_full_min5);
+
+	if ((ui_time_to_full_min1 == 0) || (ui_time_to_full_min2 == 0)
+		|| (ui_time_to_full_min3 == 0) || (ui_time_to_full_min4 == 0)
+		|| (ui_time_to_full_min5 == 0)) {
+		return -1;
+	}
+
+	if (is_protection_mode) {
+		if (((capacity <= 40) && (ui_time_to_full <= ui_time_to_full_min1))
+			|| ((capacity <= 50) && (ui_time_to_full <= ui_time_to_full_min2))
+			|| ((capacity <= 60) && (ui_time_to_full <= ui_time_to_full_min3))
+			|| ((capacity < 70) && (ui_time_to_full <= ui_time_to_full_min4))
+			|| ((capacity < 75) && (ui_time_to_full <= ui_time_to_full_min5))) {
+			time_to_full_update_th = WT_INTERMAL_TIME_MAX;
+		}
+	} else {
+		if (((capacity <= 60) && (ui_time_to_full <= ui_time_to_full_min1))
+			|| ((capacity <= 70) && (ui_time_to_full <= ui_time_to_full_min2))
+			|| ((capacity <= 80) && (ui_time_to_full <= ui_time_to_full_min3))
+			|| ((capacity < 90) && (ui_time_to_full <= ui_time_to_full_min4))
+			|| ((capacity < 95) && (ui_time_to_full <= ui_time_to_full_min5))) {
+			time_to_full_update_th = WT_INTERMAL_TIME_MAX;
+		}
+	}
+	return time_to_full_update_th;
+}
+
+static int wt_check_calculate_time_state(struct battery_data *data,
+				struct mtk_charger *pinfo, int fgcurrent)
+{
+	int wt_calculate_time_state = CALCULATE_NONE_STATE;
+	static int pre_bat_status = POWER_SUPPLY_STATUS_UNKNOWN;
+	static int pre_pd_type = MTK_PD_CONNECT_NONE;
+
+	if (POWER_SUPPLY_STATUS_CHARGING == data->bat_status) {
+		if (pinfo->pd_type == MTK_PD_CONNECT_PE_READY_SNK_APDO) {
+			if ((pre_bat_status != POWER_SUPPLY_STATUS_CHARGING)
+				|| (pre_pd_type != MTK_PD_CONNECT_PE_READY_SNK_APDO)) {
+				wt_calculate_time_state = CALCULATE_INIT_STATE;
+			} else {
+				wt_calculate_time_state = CALCULATE_CHARGING_STATE;
+			}
+		} else {
+			if ((pinfo->chr_type != POWER_SUPPLY_TYPE_UNKNOWN) &&
+				(pre_bat_status != POWER_SUPPLY_STATUS_CHARGING)) {
+				wt_calculate_time_state = CALCULATE_INIT_STATE;
+			} else {
+				wt_calculate_time_state = CALCULATE_CHARGING_STATE;
+			}
+		}
+
+		if (pre_bat_status != POWER_SUPPLY_STATUS_CHARGING
+			&& (fgcurrent > 10)) {
+			init_avg_current(fgcurrent);
+		}
+	} else {
+		if (POWER_SUPPLY_STATUS_FULL == data->bat_status) {
+			wt_calculate_time_state = CALCULATE_FULL_STATE;
+		} else {
+			wt_calculate_time_state = CALCULATE_PLUG_OUT_STATE;
+		}
+		init_avg_current(-1);
+	}
+
+	pre_bat_status = data->bat_status;
+	pre_pd_type = pinfo->pd_type;
+	pr_err("%s: wt_calculate_time_state=%d\n", __func__, wt_calculate_time_state);
+	return wt_calculate_time_state;
+}
+
+static int wt_recheck_calculate_time_state(int wt_initial_time_interval,
+				int fgcurrent, int soc)
+{
+	int wt_calculate_time_state = CALCULATE_CHARGING_STATE;
+	int capacity = soc;
+
+	//no charging current
+	if ((fgcurrent <= 10
+		&& (wt_initial_time_interval > UPDATE_TO_FULL_INTERVAL_S))
+		|| (capacity < 0)) {
+		wt_calculate_time_state = CALCULATE_INVALID_STATE;
+		init_avg_current(-1);
+	}
+
+	pr_err("%s: wt_calculate_time_state=%d\n", __func__, wt_calculate_time_state);
+	return wt_calculate_time_state;
+}
+
+static int wt_recheck_afc_calculate_time_state(struct mtk_charger *pinfo,
+				int wt_recheck_afc_start_time)
+{
+	int batt_charging_source = 0;
+	bool is_recheck_afc = false;
+	int real_time = 0;
+	int wt_check_afc_time_interval = 0;
+
+	if (pinfo == NULL)
+		return -1;
+
+	batt_charging_source = wt_get_charge_source(pinfo);
+
+	if ((batt_charging_source != SEC_BATTERY_CABLE_9V_TA)
+		&& (batt_charging_source != SEC_BATTERY_CABLE_TA)) {
+		return 0;
+	}
+
+	if (batt_charging_source == SEC_BATTERY_CABLE_TA) {
+		real_time = fulltime_get_sys_time();
+		if (real_time >= wt_recheck_afc_start_time) {
+			wt_check_afc_time_interval = real_time - wt_recheck_afc_start_time;
+		}
+
+		if (wt_check_afc_time_interval >= RECHECK_DCP_INTERVAL_S) {
+			return 0;
+		}
+	}
+
+	if (batt_charging_source == SEC_BATTERY_CABLE_9V_TA) {
+		is_recheck_afc = true;
+	} else {
+		is_recheck_afc = false;
+	}
+
+	pr_err("%s: is_recheck_afc=%d\n", __func__, is_recheck_afc);
+	if (is_recheck_afc) {
+		return CALCULATE_INIT_STATE;
+	}
+
+	return -1;
+}
+
+#if defined (ONEUI_6P1_CHG_PROTECION_ENABLE)
+static int wt_check_protection_calculate_time_state(struct mtk_charger *pinfo)
+{
+	static int old_batt_mode = 0;
+	int batt_mode = pinfo->batt_full_capacity;
+	bool is_mode_changed = false;
+
+	if (pinfo == NULL)
+		return -1;
+
+	if (((batt_mode > POWER_SUPPLY_CAPACITY_100)
+		&& (old_batt_mode <= POWER_SUPPLY_CAPACITY_100))
+		|| ((batt_mode <= POWER_SUPPLY_CAPACITY_100)
+		&& (old_batt_mode > POWER_SUPPLY_CAPACITY_100))) {
+		is_mode_changed = true;
+	} else {
+		is_mode_changed = false;
+	}
+
+	old_batt_mode = batt_mode;
+	pr_err("%s: is_mode_changed=%d\n", __func__, is_mode_changed);
+	if (is_mode_changed) {
+		return CALCULATE_INIT_STATE;
+	}
+
+	return -1;
+}
+#endif
+
+static int wt_check_hv_disable_calculate_time_state(struct mtk_charger *pinfo)
+{
+	static bool old_batt_charge_mode = false;
+	int batt_charge_mode = pinfo->disable_quick_charge;
+	bool is_mode_changed = false;
+
+	if (pinfo == NULL)
+		return -1;
+
+	if (batt_charge_mode ^ old_batt_charge_mode) {
+		is_mode_changed = true;
+	} else {
+		is_mode_changed = false;
+	}
+
+	old_batt_charge_mode = batt_charge_mode;
+	pr_err("%s: is_mode_changed=%d\n", __func__, is_mode_changed);
+	if (is_mode_changed) {
+		return CALCULATE_INIT_STATE;
+	}
+
+	return -1;
 }
 
 static int get_time_to_charge_full(struct battery_data *data)
 {
 	int magic_current, real_time;
 	int time_to_charge_full = 0xff;
-	int deadsoc_coefficient;
 	int capacity = data->bat_capacity;
 	int fgcurrent = 0;
-	bool b_ischarging;
-	int remain_ui = CHARGE_FULL_SOC - capacity;
 	int remain_mah = 0;
 	struct mtk_battery *gm;
 	struct mtk_charger *pinfo;
 	struct power_supply *psy;
 	static int pre_real_time = 0, pre_magic_current = 0, pre_remain_mah = 0;
 	static bool magic_current_changflg = true;
-	static int pre_apdo_time = 0, pre_bat_status = POWER_SUPPLY_STATUS_UNKNOWN;
+	static int wt_initial_time_interval = 0;
+	static int wt_recheck_afc_start_time = 0;
+	static int pre_charge_plug_time = 0;
+	int wt_calculate_time_state = CALCULATE_NONE_STATE;
+	static int ui_time_to_full = 0;
+	static int old_ui_time_to_full = 0;
+	static int raw_time_to_full = 0;
+	static int old_raw_time_to_full = 0;
+	static int initial_time_to_full = 0;
+	static bool is_initial_flag = true;
+	int wt_time_now = 0;
+	static int wt_time_old = 0;
+	int wt_time_interval = 0;
+	static int wt_time_to_full_offset = WT_INTERMAL_TIME_NORMAL;
+	static int time_to_full_update_th = WT_INTERMAL_TIME_NORMAL;
+	int time_critical_update_th = WT_INTERMAL_TIME_NORMAL;
+	int wt_time_critical_offset = WT_INTERMAL_TIME_NORMAL;
+	static bool is_time_need_update = false;
+	static int wt_compensation_state = 0;
+	static int ui_raw_time_diff = 0;
+	static int old_ui_raw_time_diff = 0;
+	static bool is_need_recheck_afc = true;
+	static bool is_first_check_afc = true;
+	int wt_recheck_afc = 0;
+	int critical_soc = 0;
 
 	psy = power_supply_get_by_name("mtk-master-charger");
 	if (psy == NULL) {
@@ -1045,66 +1839,134 @@ static int get_time_to_charge_full(struct battery_data *data)
 
 	gm = get_mtk_battery();
 
-	fgcurrent = get_battery_current(pinfo);
-	if(gm->chr_type == POWER_SUPPLY_TYPE_UNKNOWN)
-		b_ischarging = false;
-	else
-		b_ischarging = true;
-	if (!b_ischarging) {
-		fgcurrent = 0 - fgcurrent;
+	fgcurrent = wt_get_battery_current(gm);
+
+	pr_err("%s: capacity=%d, fgcurrent=%d,bat_cycle=%d,status=%d\n",
+		__func__, capacity, fgcurrent, gm->bat_cycle, data->bat_status);
+
+	wt_calculate_time_state = wt_check_calculate_time_state(data, pinfo,
+								fgcurrent);
+	if (wt_calculate_time_state == CALCULATE_CHARGING_STATE) {
+		wt_calculate_time_state =
+			wt_recheck_calculate_time_state(wt_initial_time_interval,
+			fgcurrent, capacity);
 	}
 
-	if (gm->bat_cycle < 199) {
-		deadsoc_coefficient = DEADSOC_COEFFICIENT1;
-	} else if (gm->bat_cycle < 249) {
-		deadsoc_coefficient = DEADSOC_COEFFICIENT2;
-	} else if (gm->bat_cycle < 299) {
-		deadsoc_coefficient = DEADSOC_COEFFICIENT3;
-	} else if (gm->bat_cycle < 1000) {
-		deadsoc_coefficient = DEADSOC_COEFFICIENT4;
-	} else {
-		deadsoc_coefficient = DEADSOC_COEFFICIENT5;
+	remain_mah = wt_get_battery_remain_mah(gm, pinfo, capacity);
+	if (remain_mah < 0) {
+		pr_err("%s: Error: The remaining capacity is invalid\n", __func__);
+		remain_mah = 0;
+		wt_calculate_time_state = CALCULATE_INVALID_STATE;
 	}
 
-	pr_err("%s: capacity=%d, fgcurrent=%d,bat_cycle=%d,status=%d,b_ischarging = %d\n",
-		__func__, capacity, fgcurrent, gm->bat_cycle, data->bat_status,b_ischarging);
-
-	if (POWER_SUPPLY_STATUS_CHARGING == data->bat_status) {
-		if ((pinfo->pd_type == MTK_PD_CONNECT_PE_READY_SNK_APDO) &&
-		(pre_bat_status != POWER_SUPPLY_STATUS_CHARGING))
-			pre_apdo_time = fulltime_get_sys_time();
-		pre_bat_status = data->bat_status;
-	} else {
-		if (POWER_SUPPLY_STATUS_FULL == data->bat_status)
-			time_to_charge_full = 0;
-		else
-			time_to_charge_full = -1;
-		pre_bat_status = data->bat_status;
-		return time_to_charge_full;
-	}
-
-	if(fgcurrent <= 10 && pinfo->pd_type != MTK_PD_CONNECT_PE_READY_SNK_APDO) {
-		time_to_charge_full = -1;
-		return time_to_charge_full; //no chargering
+	pr_err("%s: is_need_recheck_afc=%d\n", __func__, is_need_recheck_afc);
+	if (is_need_recheck_afc
+		&& ((wt_calculate_time_state == CALCULATE_INIT_STATE)
+		|| (wt_calculate_time_state == CALCULATE_CHARGING_STATE))) {
+		if (is_first_check_afc) {
+			wt_recheck_afc_start_time = fulltime_get_sys_time();
+			is_first_check_afc = false;
+		}
+		wt_recheck_afc = wt_recheck_afc_calculate_time_state(pinfo,
+			wt_recheck_afc_start_time);
+		if (wt_recheck_afc > 0) {
+			wt_calculate_time_state = CALCULATE_INIT_STATE;
+			is_need_recheck_afc = false;
+		} else if (wt_recheck_afc == 0) {
+			is_need_recheck_afc = false;
+		}
+		pr_err("%s: recheck afc: wt_calculate_time_state=%d\n",
+			__func__, wt_calculate_time_state);
 	}
 
 #if defined (ONEUI_6P1_CHG_PROTECION_ENABLE)
-	if(pinfo->batt_full_capacity > POWER_SUPPLY_CAPACITY_100) {
-		if (capacity >= CHARGE_80_SOC) {
-			time_to_charge_full = 0;
-			return time_to_charge_full;
+	if ((wt_calculate_time_state == CALCULATE_INIT_STATE)
+		|| (wt_calculate_time_state == CALCULATE_CHARGING_STATE)) {
+		if (wt_check_protection_calculate_time_state(pinfo) > 0) {
+			wt_calculate_time_state = CALCULATE_INIT_STATE;
 		}
-		remain_ui = CHARGE_80_SOC - capacity;
+		pr_err("%s: check protection: wt_calculate_time_state=%d\n",
+			__func__, wt_calculate_time_state);
 	}
 #endif
 
-	remain_mah = DESIGNED_CAPACITY * deadsoc_coefficient * remain_ui / 100 / 100;
+	if ((wt_calculate_time_state == CALCULATE_INIT_STATE)
+		|| (wt_calculate_time_state == CALCULATE_CHARGING_STATE)) {
+		if (wt_check_hv_disable_calculate_time_state(pinfo) > 0) {
+			wt_calculate_time_state = CALCULATE_INIT_STATE;
+		}
+		pr_err("%s: check hv_disable: wt_calculate_time_state=%d\n",
+			__func__, wt_calculate_time_state);
+	}
+
+	switch (wt_calculate_time_state) {
+		case CALCULATE_INIT_STATE:
+			wt_initial_time_interval = 0;
+			is_initial_flag = true;
+			raw_time_to_full = 0;
+			ui_time_to_full = 0;
+			old_ui_time_to_full = ui_time_to_full;
+			wt_time_to_full_offset = WT_INTERMAL_TIME_NORMAL;
+			time_to_full_update_th = WT_INTERMAL_TIME_NORMAL;
+			wt_time_now = 0;
+			wt_time_old = 0;
+			is_time_need_update = false;
+			break;
+		case CALCULATE_FULL_STATE:
+			time_to_charge_full = 0;
+			wt_initial_time_interval = 0;
+			is_initial_flag = false;
+			break;
+		case CALCULATE_PLUG_OUT_STATE:
+			time_to_charge_full = -1;
+			wt_initial_time_interval = 0;
+			is_initial_flag = false;
+			is_need_recheck_afc = true;
+			is_first_check_afc = true;
+			wt_recheck_afc_start_time = 0;
+			break;
+		case CALCULATE_INVALID_STATE:
+			time_to_charge_full = -1;
+			is_initial_flag = true;
+			break;
+		default:
+			break;
+	}
+
+	if ((wt_calculate_time_state == CALCULATE_FULL_STATE)
+		|| (wt_calculate_time_state == CALCULATE_PLUG_OUT_STATE)
+		|| (wt_calculate_time_state == CALCULATE_INVALID_STATE)) {
+		raw_time_to_full = time_to_charge_full;
+		ui_time_to_full = time_to_charge_full;
+		old_ui_time_to_full = ui_time_to_full;
+		wt_time_to_full_offset = WT_INTERMAL_TIME_NORMAL;
+		time_to_full_update_th = WT_INTERMAL_TIME_NORMAL;
+		wt_time_now = 0;
+		wt_time_old = 0;
+		is_time_need_update = false;
+		return time_to_charge_full;
+	}
+
+	fgcurrent = calculate_avg_current(fgcurrent);
+	pr_err("%s: avg_current=%d\n", __func__, fgcurrent);
+
+	if (is_initial_flag) {
+		pre_charge_plug_time = fulltime_get_sys_time();
+	}
 
 	real_time = fulltime_get_sys_time();
-	if (pinfo->pd_type == MTK_PD_CONNECT_PE_READY_SNK_APDO)
-		magic_current = select_apdo_magic_current(fgcurrent, capacity, real_time - pre_apdo_time);
-	else
-		magic_current = select_basic_magic_current(fgcurrent, capacity);
+	if (pre_charge_plug_time > real_time) {
+		pre_charge_plug_time = real_time;
+	}
+	wt_initial_time_interval = real_time - pre_charge_plug_time;
+
+	if (pinfo->pd_type == MTK_PD_CONNECT_PE_READY_SNK_APDO
+		&& (!pinfo->disable_quick_charge)) {
+		magic_current = select_apdo_magic_current(fgcurrent, capacity, wt_initial_time_interval);
+	}
+	else {
+		magic_current = select_basic_magic_current(fgcurrent, capacity, pinfo, wt_initial_time_interval);
+	}
 
 	if ((pre_magic_current == magic_current) && (magic_current_changflg)) {
 		magic_current_changflg = false;
@@ -1113,11 +1975,16 @@ static int get_time_to_charge_full(struct battery_data *data)
 		magic_current_changflg = true;
 	}
 	pr_err("%s:magic_current=%d,%d,%d,chr_type=%d,real_time=%d,%d,%d,pd_type=%d\n", __func__,
-		pre_magic_current, magic_current, magic_current_changflg, gm->chr_type,
-		real_time, pre_real_time, pre_apdo_time, pinfo->pd_type);
+		pre_magic_current, magic_current, magic_current_changflg, pinfo->chr_type,
+		real_time, pre_real_time, pre_charge_plug_time, pinfo->pd_type);
 
 	pre_magic_current = magic_current;
-	time_to_charge_full = remain_mah * 3600 / magic_current; //second
+	if (magic_current != 0) {
+		time_to_charge_full = remain_mah * 3600 / magic_current; //second
+	} else {
+		time_to_charge_full = -1;
+		return time_to_charge_full;
+	}
 
 	if ((time_to_charge_full > (real_time - pre_real_time))
 		&& (time_to_charge_full > 0)
@@ -1128,6 +1995,179 @@ static int get_time_to_charge_full(struct battery_data *data)
 		time_to_charge_full = remain_mah * 3600 / magic_current - (real_time - pre_real_time);
 	}
 	pre_remain_mah = remain_mah;
+
+	pr_err("%s: is_initial_flag=%d,wt_initial_time_interval=%d\n", __func__, is_initial_flag, wt_initial_time_interval);
+	if (is_initial_flag && (wt_initial_time_interval < UPDATE_TO_FULL_INTERVAL_S)
+		&& (magic_current != 0)) {
+		initial_time_to_full = remain_mah * 3600 / magic_current;
+		raw_time_to_full = initial_time_to_full;
+		ui_time_to_full = initial_time_to_full;
+		old_ui_time_to_full = initial_time_to_full;
+		is_initial_flag = false;
+		wt_time_now = fulltime_get_sys_time();
+		wt_time_old = wt_time_now;
+	} else {
+		if (magic_current != 0) {
+			raw_time_to_full = remain_mah * 3600 / magic_current; //second
+			wt_time_now = fulltime_get_sys_time();
+		} else {
+			raw_time_to_full = -1;
+			ui_time_to_full = -1;
+			time_to_charge_full = ui_time_to_full;
+			old_ui_time_to_full = ui_time_to_full;
+			wt_time_to_full_offset = WT_INTERMAL_TIME_NORMAL;
+			time_to_full_update_th = WT_INTERMAL_TIME_NORMAL;
+			wt_time_now = 0;
+			wt_time_old = 0;
+			is_time_need_update = false;
+			return time_to_charge_full;
+		}
+	}
+
+	if ((ui_time_to_full >= 0) && (raw_time_to_full >= 0)) {
+	if (wt_time_now >= wt_time_old) {
+		wt_time_interval = wt_time_now - wt_time_old;
+	} else {
+		wt_time_interval = -1;
+		pr_err("%s: Invalid. The time reduces\n", __func__);
+	}
+
+	old_ui_raw_time_diff = raw_time_to_full - old_ui_time_to_full;
+
+	if (ui_time_to_full == raw_time_to_full) {
+		ui_raw_time_diff = 0;
+		wt_compensation_state = COMPENSATION_LEVEL_REDUCE_NORMAL;
+	} else if (ui_time_to_full < raw_time_to_full) {
+		ui_raw_time_diff = raw_time_to_full - ui_time_to_full;
+		wt_compensation_state = COMPENSATION_LEVEL_REDUCE_SLOW;
+	} else if (ui_time_to_full > raw_time_to_full) {
+		ui_raw_time_diff = ui_time_to_full - raw_time_to_full;
+		wt_compensation_state = COMPENSATION_LEVEL_REDUCE_QUICK;
+	}
+
+	pr_err("%s: ui_time=%d, raw_time=%d, compensation_state=%d\n",
+		__func__, ui_time_to_full, raw_time_to_full, wt_compensation_state);
+
+	switch (wt_compensation_state) {
+		case COMPENSATION_LEVEL_REDUCE_NORMAL:
+			wt_time_to_full_offset = WT_INTERMAL_TIME_NORMAL;
+			time_to_full_update_th = WT_INTERMAL_TIME_NORMAL;
+			break;
+		case COMPENSATION_LEVEL_REDUCE_SLOW:
+			if (time_to_full_update_th == WT_INTERMAL_TIME_MAX) {
+				time_to_full_update_th = WT_INTERMAL_TIME_HIGH2;
+			}
+
+			time_to_full_update_th = wt_get_slow_update_th(wt_initial_time_interval,
+				time_to_full_update_th, capacity);
+
+			wt_time_to_full_offset = WT_INTERMAL_TIME_NORMAL;
+
+			critical_soc = 95;
+#if defined (ONEUI_6P1_CHG_PROTECION_ENABLE)
+			if (pinfo->batt_full_capacity > POWER_SUPPLY_CAPACITY_100) {
+				critical_soc = 75;
+			}
+#endif
+			if (capacity >= critical_soc) {
+				time_critical_update_th = wt_check_slow_critical_update_th(ui_raw_time_diff,
+				ui_time_to_full, capacity, critical_soc);
+				if (time_critical_update_th > 0) {
+					time_to_full_update_th = time_critical_update_th;
+				}
+			}
+
+			if (wt_check_min_remain_time(pinfo, ui_time_to_full, capacity) > 0) {
+				time_to_full_update_th = WT_INTERMAL_TIME_MAX;
+			}
+
+			break;
+		case COMPENSATION_LEVEL_REDUCE_QUICK:
+			if (time_to_full_update_th == WT_INTERMAL_TIME_MAX) {
+				time_to_full_update_th = WT_INTERMAL_TIME_NORMAL;
+			}
+
+			time_to_full_update_th = wt_get_quick_update_th(wt_initial_time_interval,
+				time_to_full_update_th, capacity);
+
+			wt_time_to_full_offset = WT_INTERMAL_TIME_NORMAL;
+
+			if (time_to_full_update_th <= WT_INTERMAL_TIME_LOW2) {
+				wt_time_to_full_offset = WT_INTERMAL_TIME_HIGH2;
+			}
+
+			critical_soc = 97;
+#if defined (ONEUI_6P1_CHG_PROTECION_ENABLE)
+			if (pinfo->batt_full_capacity > POWER_SUPPLY_CAPACITY_100) {
+				critical_soc = 76;
+			}
+#endif
+			if (capacity >= critical_soc) {
+				wt_time_critical_offset = wt_check_quick_critical_offset(ui_raw_time_diff,
+				raw_time_to_full, capacity, critical_soc);
+				if (wt_time_critical_offset > 0) {
+					wt_time_to_full_offset = wt_time_critical_offset;
+				}
+			}
+
+			break;
+		default:
+			wt_time_to_full_offset = WT_INTERMAL_TIME_NORMAL;
+			time_to_full_update_th = WT_INTERMAL_TIME_NORMAL;
+			break;
+	}
+
+	if ((time_to_full_update_th < WT_INTERMAL_TIME_MAX) && (wt_time_interval >= time_to_full_update_th)) {
+		is_time_need_update = true;
+	} else {
+		is_time_need_update = false;
+	}
+
+	pr_err("%s: time_interval=%d, time_th=%d, wt_time_offset=%d, is_update=%d\n",
+		__func__, wt_time_interval, time_to_full_update_th,
+		wt_time_to_full_offset, is_time_need_update);
+
+	if (is_time_need_update) {
+		if (ui_time_to_full >= (wt_time_to_full_offset + WT_INTERMAL_TIME_NORMAL)) {
+			ui_time_to_full = ui_time_to_full - wt_time_to_full_offset;
+		} else {
+			ui_time_to_full = WT_INTERMAL_TIME_NORMAL;
+		}
+		is_time_need_update = false;
+		wt_time_old = wt_time_now;
+	}
+
+	if (raw_time_to_full == 0) {
+		ui_time_to_full = 0;
+		wt_time_old = wt_time_now;
+		is_time_need_update = false;
+	}
+
+	old_raw_time_to_full = raw_time_to_full;
+
+	pr_err("%s: ui_time=%d, old_ui_time=%d\n",
+		__func__, ui_time_to_full, old_ui_time_to_full);
+
+	//wt_time_interval < 0, using old method when get time error. This situation should not occur, under normal circumstances
+	if (wt_time_interval >= 0) {
+		if (ui_time_to_full <= old_ui_time_to_full) {
+			time_to_charge_full = ui_time_to_full;
+			old_ui_time_to_full = ui_time_to_full;
+		} else {
+			pr_err("%s: Invalid. The remaining duration increases\n", __func__);
+			//time_to_charge_full = old_ui_time_to_full;
+		}
+	} else {
+			raw_time_to_full = -1;
+			ui_time_to_full = -1;
+			old_ui_time_to_full = ui_time_to_full;
+			wt_time_to_full_offset = WT_INTERMAL_TIME_NORMAL;
+			time_to_full_update_th = WT_INTERMAL_TIME_NORMAL;
+			wt_time_now = 0;
+			wt_time_old = 0;
+			is_time_need_update = false;
+	}
+	}
 
 	return time_to_charge_full;
 }
@@ -1472,9 +2512,10 @@ static void mtk_battery_external_power_changed(struct power_supply *psy)
 			bs_data->bat_status = POWER_SUPPLY_STATUS_DISCHARGING;
 		} else {
 			if (status.intval == POWER_SUPPLY_STATUS_NOT_CHARGING) {
-				bs_data->bat_status =
-					POWER_SUPPLY_STATUS_NOT_CHARGING;
-
+				//+liwei19@wt, modify 20241111, PPS charger will display  twice charging icon
+				//bs_data->bat_status =
+					//POWER_SUPPLY_STATUS_NOT_CHARGING;
+				//-liwei19@wt, modify 20241111, PPS charger will display  twice charging icon
 				dv2_chg_psy = power_supply_get_by_name("mtk-mst-div-chg");
 				if (!IS_ERR_OR_NULL(dv2_chg_psy)) {
 					ret = power_supply_get_property(dv2_chg_psy,
@@ -1484,7 +2525,15 @@ static void mtk_battery_external_power_changed(struct power_supply *psy)
 							POWER_SUPPLY_STATUS_CHARGING;
 						status.intval =
 							POWER_SUPPLY_STATUS_CHARGING;
+					} else {
+						//+liwei19@wt, modify 20241111, PPS charger will display  twice charging icon
+						bs_data->bat_status =
+							POWER_SUPPLY_STATUS_NOT_CHARGING;
 					}
+				}  else {
+					//+liwei19@wt, modify 20241111, PPS charger will display  twice charging icon
+					bs_data->bat_status =
+						POWER_SUPPLY_STATUS_NOT_CHARGING;
 				}
 			} else {
 //+P240904-06813, liwei19@wt, modify 20240905,Not recharging When SOC is 99%
@@ -5368,7 +6417,10 @@ static ssize_t show_batt_charging_source(struct device *dev,
 	if (online.intval == 0) {
 		pinfo->batt_charging_source = SEC_BATTERY_CABLE_NONE;
 	} else {
-		if (adapter_is_support_pd_pps(pinfo)) {
+		if (pinfo->chr_type == POWER_SUPPLY_TYPE_USB &&
+			pinfo->usb_type == POWER_SUPPLY_USB_TYPE_SDP) {
+			pinfo->batt_charging_source = SEC_BATTERY_CABLE_USB;
+		} else if (adapter_is_support_pd_pps(pinfo)) {
 			pinfo->batt_charging_source = SEC_BATTERY_CABLE_PDIC_APDO;
 		} else if (pinfo->pd_type == MTK_PD_CONNECT_PE_READY_SNK_PD30) {
 			pinfo->batt_charging_source = SEC_BATTERY_CABLE_PDIC;
@@ -5376,9 +6428,6 @@ static ssize_t show_batt_charging_source(struct device *dev,
 		} else if (afc_get_is_connect(pinfo)) {
 			pinfo->batt_charging_source = SEC_BATTERY_CABLE_9V_TA;
 #endif
-		} else if (pinfo->chr_type == POWER_SUPPLY_TYPE_USB &&
-			pinfo->usb_type == POWER_SUPPLY_USB_TYPE_SDP) {
-			pinfo->batt_charging_source = SEC_BATTERY_CABLE_USB;
 		} else if (pinfo->chr_type == POWER_SUPPLY_TYPE_USB_CDP) {
 			pinfo->batt_charging_source = SEC_BATTERY_CABLE_USB_CDP;
 		}  else if (pinfo->chr_type == POWER_SUPPLY_TYPE_USB_DCP) {
@@ -5532,7 +6581,9 @@ int battery_psy_init(struct platform_device *pdev)
 	gauge->gm = gm;
 	gm->gauge = gauge;
 	mutex_init(&gm->ops_lock);
-
+#if defined (CONFIG_W3_CHARGER_PRIVATE)
+	init_avg_current(-1);
+#endif
 	gm->bs_data.chg_psy = devm_power_supply_get_by_phandle(&pdev->dev,
 							 "charger");
 	if (IS_ERR_OR_NULL(gm->bs_data.chg_psy))
