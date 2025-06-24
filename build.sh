@@ -75,7 +75,7 @@ export GKI_KERNEL_BUILD_OPTIONS="
 # Build options (extra)
 export MKBOOTIMG_EXTRA_ARGS="
     --os_version 13.0.0 \
-    --os_patch_level 2025-01-00 \
+    --os_patch_level 2025-04-00 \
     --pagesize 4096
 "
 
