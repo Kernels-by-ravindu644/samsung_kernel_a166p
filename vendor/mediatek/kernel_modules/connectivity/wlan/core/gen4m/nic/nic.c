@@ -5855,55 +5855,23 @@ uint32_t nicApplyNetworkAddress(struct ADAPTER
 	DBGLOG(NIC, INFO, "WLAN0 mac: " MACSTR "\n",
 		MAC2STR(prAdapter->rMyMacAddr));
 
-	/* 4 <3> Update new MAC address to all 3 networks */
-	COPY_MAC_ADDR(prAdapter->rWifiVar.aucDeviceAddress,
-		      prAdapter->rMyMacAddr);
-	prAdapter->rWifiVar.aucDeviceAddress[0] ^=
-		MAC_ADDR_LOCAL_ADMIN;
-
 	for (i = 0; i < KAL_P2P_NUM; i++) {
-		COPY_MAC_ADDR(prAdapter->rWifiVar.aucInterfaceAddress[i],
-			      prAdapter->rMyMacAddr);
-		prAdapter->rWifiVar.aucInterfaceAddress[i][0] |= 0x2;
-		prAdapter->rWifiVar.aucInterfaceAddress[i][0] ^=
-			i << MAC_ADDR_LOCAL_ADMIN;
+		uint8_t *aucMacAddr;
 
-		nicApplyLinkAddress(prAdapter,
-			prAdapter->rWifiVar.aucInterfaceAddress[i],
-			prAdapter->rWifiVar.aucInterfaceAddress[i],
-			i);
+		aucMacAddr = prAdapter->rWifiVar.aucP2pDevAddr[i];
+		COPY_MAC_ADDR(aucMacAddr, prAdapter->rMyMacAddr);
+		aucMacAddr[0] |= P2P_DEV_MAC_1ST_BYTE_MASK;
+		aucMacAddr[5] ^= i;
 
-		DBGLOG(NIC, INFO, "P2P_INF[%d] mac: " MACSTR "\n",
-			i, MAC2STR(prAdapter->rWifiVar.aucInterfaceAddress[i]));
+		aucMacAddr = prAdapter->rWifiVar.aucInterfaceAddress[i];
+		COPY_MAC_ADDR(aucMacAddr, prAdapter->rWifiVar.aucP2pDevAddr[i]);
+
+		DBGLOG(NIC, INFO,
+			"P2P[%u] DEV mac:" MACSTR " INF mac:" MACSTR "\n",
+			i,
+			prAdapter->rWifiVar.aucP2pDevAddr[i],
+			prAdapter->rWifiVar.aucInterfaceAddress[i]);
 	}
-
-#if CFG_ENABLE_WIFI_DIRECT
-	if (prAdapter->fgIsP2PRegistered) {
-		for (i = 0; i < prAdapter->ucHwBssIdNum; i++) {
-			if (prAdapter->rWifiVar.arBssInfoPool[i].eNetworkType ==
-			    NETWORK_TYPE_P2P) {
-				COPY_MAC_ADDR(
-					prAdapter->rWifiVar.arBssInfoPool[i].
-					aucOwnMacAddr,
-					prAdapter->rWifiVar.aucDeviceAddress);
-				DBGLOG(NIC, INFO, "P2P_DEV[%d] mac: " MACSTR "\n",
-					i, MAC2STR(prAdapter->rWifiVar.arBssInfoPool[i].aucOwnMacAddr));
-			}
-		}
-	}
-#endif
-
-#if CFG_ENABLE_BT_OVER_WIFI
-	for (i = 0; i < prAdapter->ucHwBssIdNum; i++) {
-		if (prAdapter->rWifiVar.arBssInfoPool[i].eNetworkType ==
-		    NETWORK_TYPE_BOW) {
-			COPY_MAC_ADDR(
-				prAdapter->rWifiVar.arBssInfoPool[i].
-				aucOwnMacAddr,
-				prAdapter->rWifiVar.aucDeviceAddress);
-		}
-	}
-#endif
 
 #if CFG_TEST_WIFI_DIRECT_GO
 	if (prAdapter->rWifiVar.prP2pFsmInfo->eCurrentState ==

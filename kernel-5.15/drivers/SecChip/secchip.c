@@ -25,12 +25,13 @@
 #include <linux/clk.h>
 #include <linux/clkdev.h>
 #include <linux/of_clk.h>
+#include <linux/pm_wakeup.h>
 
 extern int secchip_enable_clk(struct i2c_adapter *adap);
 extern int secchip_disable_clk(struct i2c_adapter *adap);
 static int gpio_power;
-static volatile uint8_t client_open_flag = 0;
 struct i2c_client *i2c_k250;
+struct wakeup_source *k250_suspend_lock;
 #define MAX_FILE_DATA_SIZE 256
 
 //read chip start
@@ -65,12 +66,19 @@ int template_i2c_client_open(struct inode *inode, struct file *file)
     }
 
     gpio_set_value(gpio_power, 1);
+
+    if (k250_suspend_lock == NULL){
+        PRINT_ERR("%s suspend lock is null!\n", __func__);
+    } else {
+        if (!secchip_wake_locked(k250_suspend_lock))
+            secchip_wake_lock(k250_suspend_lock);
+    }
+
     ret = secchip_enable_clk(i2c_k250->adapter);
     PRINT_ERR("%s secchip_enable_clk ret=%d\n", __func__, ret);
 
     msleep(20);
 
-    client_open_flag = 1;
     PRINT_ERR("template_i2c_client_open exit\n");
     return ret;
 }
@@ -83,7 +91,17 @@ int template_i2c_client_release(struct inode *inode, struct file *file)
     ret = secchip_disable_clk(i2c_k250->adapter);
     gpio_set_value(gpio_power, 0);
 
-    client_open_flag = 0;
+    if (k250_suspend_lock == NULL){
+        PRINT_ERR("%s suspend lock is null!\n", __func__);
+    } else {
+        if (secchip_wake_locked(k250_suspend_lock)){
+            secchip_wake_unlock(k250_suspend_lock);
+        }
+    }
+
+    //delay
+    msleep(20);
+
     PRINT_ERR("template_i2c_client_close exit gpio_set_value ret=%d\n", ret);
     return ret;
 }
@@ -513,30 +531,6 @@ int selfTest(struct i2c_client *client, unsigned int *seq, unsigned char test_cm
 }
 //read chip end
 
-int k250_suspend(struct device *dev)
-{
-	if(client_open_flag == 1){
-		secchip_disable_clk(i2c_k250->adapter);
-		PRINT_ERR("secchip suspend disable clk");
-	}
-	return 0;
-}
-
-int k250_resume(struct device *dev)
-{
-	if(client_open_flag == 1){
-		secchip_enable_clk(i2c_k250->adapter);
-		PRINT_ERR("secchip resume enable clk");
-	}
-	return 0;
-}
-
-static const struct dev_pm_ops k250_pm_ops =
-{
-    .suspend = k250_suspend,
-    .resume = k250_resume,
-};
-
 static int k250_parse_dt(struct device *dev, int status)
 {
     int ret = -1;
@@ -603,10 +597,16 @@ static int Knoxvault_probe(struct platform_device *pdev)
         goto failed_parse_dt;
     }
 
+    k250_suspend_lock = secchip_wake_lock_init(NULL, "k250 wakelock");
+    if (k250_suspend_lock == NULL){
+        PRINT_ERR("k250_suspend_lock register error\n");
+    }else{
+        PRINT_ERR("k250_suspend_lock register success\n");
+    }
+
     PRINT_INF("wxh-probe success\n");
     return 0;
 
-    PRINT_ERR("wxh- 11\n");
 failed_parse_dt:
     PRINT_ERR("wxh-probe failed\n");
     return ret;
@@ -615,6 +615,13 @@ failed_parse_dt:
 static int Knoxvault_remove(struct platform_device *pdev)
 {
     int ret = 0;
+
+    if (k250_suspend_lock == NULL){
+        PRINT_ERR("%s suspend lock is null!\n", __func__);
+    } else {
+        secchip_wake_lock_destroy(k250_suspend_lock);
+    }
+
     PRINT_INF("wxh-Knoxvault_remove success %d\n", ret);
     ENTER;
     return 0;
@@ -653,7 +660,6 @@ static struct i2c_driver k250a_driver = {
 		.name = "k250a",
 		.owner = THIS_MODULE,
 		.of_match_table = k250a_match_table,
-		.pm = &k250_pm_ops,
 	},
 };
 

@@ -86,6 +86,8 @@ struct PARAM_MANAGE_CHANNEL_LIST {
 
 #define PERCENTAGE(_val, _base) (_val * 100 / _base)
 
+#define FW_CFG_KEY_ESS_BAND_BITMAP		"EssBandBitmap"
+
 /*******************************************************************************
  *                              F U N C T I O N S
  *******************************************************************************
@@ -2508,6 +2510,26 @@ uint8_t wnmWtcCheckRejectAp(
 }
 
 #endif
+
+uint32_t wlanSetEssBandBitmap(
+	struct ADAPTER *prAdapter,
+	uint8_t ucEssBandBitMap)
+{
+	char cmd[128] = { 0 };
+	uint32_t status = WLAN_STATUS_FAILURE;
+
+	kalSnprintf(cmd, sizeof(cmd), "%s %d",
+				      FW_CFG_KEY_ESS_BAND_BITMAP,
+				      ucEssBandBitMap);
+	status =  wlanFwCfgParse(prAdapter, cmd);
+	if (status != WLAN_STATUS_SUCCESS)
+		DBGLOG(INIT, WARN, "set Ess band bitmap fail %d\n", status);
+	else
+		DBGLOG(INIT, INFO, "set Ess band bitmap success [%d]\n",
+				   ucEssBandBitMap);
+
+	return status;
+}
 
 void roamingFsmSetSingleScanCadence(struct ADAPTER *prAdapter,
 	uint8_t ucBssIndex)

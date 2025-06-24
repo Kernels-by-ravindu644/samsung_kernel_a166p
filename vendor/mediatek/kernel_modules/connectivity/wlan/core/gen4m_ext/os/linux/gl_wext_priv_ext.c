@@ -29,6 +29,8 @@
 #if CFG_ENABLE_WIFI_DIRECT
 #include "gl_p2p_os.h"
 #endif
+#include "ais_fsm.h"
+extern struct GETBSSINFO_T bssinfo_back;
 
 /*******************************************************************************
  *                              C O N S T A N T S
@@ -151,6 +153,8 @@
 #define CMD_SET_WTC_MODE			"SETWTCMODE"
 
 #define CMD_SETWSECINFO "SETWSECINFO"
+
+#define CMD_SET_ENABLE_BTM "SET_ENABLE_BTM"
 #define CMD_SET_FCC_CHANNEL "SET_FCC_CHANNEL"
 
 /*******************************************************************************
@@ -248,6 +252,10 @@ struct CMD_VALIDATE_POLICY reassoc_ext_policy[COMMON_CMD_SET_ARG_NUM(3)] = {
 
 struct CMD_VALIDATE_POLICY set_roam_trigger_ext_policy[COMMON_CMD_SET_ARG_NUM(2)] = {
 	[COMMON_CMD_ATTR_IDX(1)] = {.type = NLA_S8, .min = -100, .max = -50},
+};
+
+struct CMD_VALIDATE_POLICY enable_btm_policy[COMMON_CMD_SET_ARG_NUM(2)] = {
+	[COMMON_CMD_ATTR_IDX(1)] = {.type = NLA_U8, .min = 0, .max = U8_MAX}
 };
 
 static struct CFG_NCHO_SCAN_CHNL rRoamScnChnl;
@@ -1346,8 +1354,39 @@ uint32_t wlanoidGetBssInfo(struct ADAPTER *prAdapter,
 	prAisFsmInfo = aisGetAisFsmInfo(prAdapter, ucBssIndex);
 
 	if (!prBssInfo || !prBssDesc || !prStaRec || !prAisFsmInfo) {
-		DBGLOG(OID, WARN, "status error: %d,%d,%d,%d",
-			prBssInfo, prBssDesc, prStaRec, prAisFsmInfo);
+#if (CFG_STAINFO_FEATURE == 1)
+		index += kalSprintf(pvSetBuffer + index, "%02x:%02x:%02x ",
+			bssinfo_back.OUI[0],
+			bssinfo_back.OUI[1],
+			bssinfo_back.OUI[2]);
+		index += kalSprintf(pvSetBuffer + index, "%d ",
+			bssinfo_back.channel_freq);
+		index += kalSprintf(pvSetBuffer + index, "%d ",
+			bssinfo_back.channel_bw);
+		index += kalSprintf(pvSetBuffer + index, "%d ",
+			bssinfo_back.rssi);
+		index += kalSprintf(pvSetBuffer + index, "%d ",
+			bssinfo_back.datarate);
+		index += kalSprintf(pvSetBuffer + index, "%d ",
+			bssinfo_back.phy_mode);
+		index += kalSprintf(pvSetBuffer + index, "%d ",
+			bssinfo_back.ant_mode);
+		index += kalSprintf(pvSetBuffer + index, "%d ", 0);
+		index += kalSprintf(pvSetBuffer + index, "%d ", 0);
+		index += kalSprintf(pvSetBuffer + index, "%d ", 0);
+		index += kalSprintf(pvSetBuffer + index, "%d ", 0);
+		index += kalSprintf(pvSetBuffer + index, "%d ",
+			bssinfo_back.AKM);
+		index += kalSprintf(pvSetBuffer + index, "%d ",
+			bssinfo_back.Roaming_count);
+		index += kalSprintf(pvSetBuffer + index, "%d ",
+			bssinfo_back.KV);
+		index += kalSprintf(pvSetBuffer + index, "%d",
+			bssinfo_back.KVIE);
+		kalMemCopy(pvSetBuffer + index, separator, 1);
+		index++;
+		*pu4SetInfoLen = index;
+#endif
 		return WLAN_STATUS_SUCCESS;
 	}
 	/* OUI */
@@ -5459,6 +5498,46 @@ int testmode_set_wtc_mode(
 
 #endif /* CFG_SUPPORT_NCHO */
 
+int testmode_set_enable_btm(
+	struct wiphy *wiphy,
+	struct wireless_dev *wdev,
+	char *pcCommand,
+	int i4TotalLen)
+{
+	int32_t i4Argc = 0;
+	int8_t *apcArgv[WLAN_CFG_ARGV_MAX] = {0};
+	int32_t i4Ret = -1;
+	uint32_t rStatus = WLAN_STATUS_FAILURE;
+	struct GLUE_INFO *prGlueInfo = NULL;
+	struct CONNECTION_SETTINGS *prConnSettings = NULL;
+	uint8_t ucBssIndex = 0;
+
+	DBGLOG(INIT, TRACE, "command is %s\n", pcCommand);
+
+	ucBssIndex = wlanGetBssIdx(wdev->netdev);
+	if (!IS_BSS_INDEX_VALID(ucBssIndex))
+		return WLAN_STATUS_INVALID_DATA;
+
+	WIPHY_PRIV(wiphy, prGlueInfo);
+	prConnSettings = aisGetConnSettings(prGlueInfo->prAdapter, ucBssIndex);
+	rStatus = wlanCfgParseArgument(pcCommand, &i4Argc, apcArgv);
+
+	if (rStatus == WLAN_STATUS_SUCCESS && i4Argc >= 2) {
+		i4Ret = kalkStrtou8(apcArgv[1], 0,
+				&prConnSettings->ucBTMEnableMode);
+		prConnSettings->ucBTMEnableMode += 1;
+		if (i4Ret) {
+			DBGLOG(REQ, ERROR, "parse u4Param error %d\n", i4Ret);
+			return WLAN_STATUS_INVALID_DATA;
+		}
+	} else {
+		DBGLOG(REQ, ERROR, "Set enable BTM failed\n");
+		return WLAN_STATUS_INVALID_DATA;
+	}
+
+	return rStatus;
+}
+
 #if CFG_SUPPORT_ASSURANCE
 int testmode_set_disconnect_ies(
 	struct wiphy *wiphy,
@@ -6154,6 +6233,14 @@ struct STR_CMD_HANDLER str_cmd_ext_handlers[] = {
 		.u4PolicySize = ARRAY_SIZE(u32_ext_policy)
 	},
 #endif
+	{
+		.pcCmdStr  = CMD_SET_ENABLE_BTM,
+		.pfHandler = testmode_set_enable_btm,
+		.argPolicy = VERIFY_EXACT_ARG_NUM,
+		.ucArgNum  = COMMON_CMD_SET_ARG_NUM(2),
+		.policy    = enable_btm_policy,
+		.u4PolicySize = ARRAY_SIZE(enable_btm_policy)
+	},
 #if CFG_SUPPORT_ASSURANCE
 	{
 		.pcCmdStr  = CMD_SET_DISCONNECT_IES,

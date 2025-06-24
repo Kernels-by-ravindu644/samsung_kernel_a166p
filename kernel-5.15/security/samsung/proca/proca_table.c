@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
  * PROCA task descriptors table
  *
@@ -14,14 +15,15 @@
  * GNU General Public License for more details.
  */
 
-#include "proca_table.h"
-
 #include <linux/hashtable.h>
 #include <linux/string.h>
 
-void proca_table_init(struct proca_table *table)
+#include "proca_table.h"
+#include "proca_log.h"
+
+int proca_table_init(struct proca_table *table)
 {
-	BUG_ON(!table);
+	PROCA_BUG_ON(!table);
 
 	memset(table, 0, sizeof(*table));
 
@@ -30,6 +32,7 @@ void proca_table_init(struct proca_table *table)
 	hash_init(table->app_name_map);
 
 	table->hash_tables_shift = PROCA_TASKS_TABLE_SHIFT;
+	return 0;
 }
 
 /*
@@ -84,7 +87,7 @@ static unsigned long calculate_pid_hash(struct proca_table *table, pid_t pid)
 	return proca_hash_32(pid) >> (32 - table->hash_tables_shift);
 }
 
-void proca_table_add_task_descr(struct proca_table *table,
+int proca_table_add_task_descr(struct proca_table *table,
 				struct proca_task_descr *descr)
 {
 	unsigned long pid_hash_key;
@@ -92,7 +95,7 @@ void proca_table_add_task_descr(struct proca_table *table,
 	unsigned long irqsave_flags;
 	struct proca_identity *identity;
 
-	BUG_ON(!table || !descr);
+	PROCA_BUG_ON(!table || !descr);
 
 	identity = &descr->proca_identity;
 
@@ -110,6 +113,7 @@ void proca_table_add_task_descr(struct proca_table *table,
 			&table->app_name_map[app_hash_key]);
 
 	spin_unlock_irqrestore(&table->maps_lock, irqsave_flags);
+	return 0;
 }
 
 void proca_table_remove_task_descr(struct proca_table *table,

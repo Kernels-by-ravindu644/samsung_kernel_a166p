@@ -2056,6 +2056,31 @@ $(MODULE_NAME_RESET)-objs += $(RESET_OBJS)
 obj-m += $(MODULE_NAME_RESET).o
 endif
 
+ifneq ($(findstring 98901AA1,$(TARGET_PRODUCT)),)
+    ccflags-y += -DCONFIG_MTK_S98901AA1_DOMAIN_PWR
+endif
+ifneq ($(findstring a16,$(TARGET_PRODUCT)),)
+    ccflags-y += -DCONFIG_MTK_S98901AA1_DOMAIN_PWR
+endif
+ifneq ($(findstring 98902EA1,$(TARGET_PRODUCT)),)
+    ccflags-y += -DCONFIG_MTK_S98902EA1_DOMAIN_PWR
+endif
+ifneq ($(findstring m16xmdins,$(TARGET_PRODUCT)),)
+    ccflags-y += -DCONFIG_MTK_S98902EA1_DOMAIN_PWR
+endif
+ifneq ($(findstring m16xmdxx,$(TARGET_PRODUCT)),)
+    ccflags-y += -DCONFIG_MTK_S98902EA1_DOMAIN_PWR
+endif
+ifneq ($(findstring 98902AA1,$(TARGET_PRODUCT)),)
+    ccflags-y += -DCONFIG_MTK_S98902AA1_DOMAIN_PWR
+endif
+ifneq ($(findstring m16xmins,$(TARGET_PRODUCT)),)
+    ccflags-y += -DCONFIG_MTK_S98902AA1_DOMAIN_PWR
+endif
+ifneq ($(findstring m16xmxx,$(TARGET_PRODUCT)),)
+    ccflags-y += -DCONFIG_MTK_S98902AA1_DOMAIN_PWR
+endif
+
 #
 # Frame size
 #

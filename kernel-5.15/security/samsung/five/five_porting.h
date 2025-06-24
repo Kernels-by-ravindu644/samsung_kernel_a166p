@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: GPL-2.0 */
 /*
  * This is needed backporting of source code from Kernel version 4.x
  *
@@ -21,11 +22,10 @@
 #include <linux/version.h>
 #include <linux/magic.h>
 
-/* fallthrough is defined since v5.4.0 */
+/* fallthrough; is defined since v5.4.0 */
 #ifndef fallthrough
-#define fallthrough                    do {} while (0)  /* fallthrough */
+#define fallthrough                    do {} while (0)  /* fallthrough; */
 #endif
-
 
 /* OVERLAYFS_SUPER_MAGIC is defined since v4.5.0 */
 #ifndef OVERLAYFS_SUPER_MAGIC
@@ -115,9 +115,10 @@ static inline ssize_t __vfs_getxattr(struct dentry *dentry, struct inode *inode,
 }
 #endif
 
-#if (defined(CONFIG_ANDROID) && (LINUX_VERSION_CODE < KERNEL_VERSION(5, 4, 0) || \
-				LINUX_VERSION_CODE >= KERNEL_VERSION(5, 15, 0))) || \
-				LINUX_VERSION_CODE >= KERNEL_VERSION(6, 1, 0)
+#if (defined(CONFIG_ANDROID) && \
+		(LINUX_VERSION_CODE < KERNEL_VERSION(5, 4, 0) || \
+		LINUX_VERSION_CODE >= KERNEL_VERSION(5, 15, 0))) || \
+		LINUX_VERSION_CODE >= KERNEL_VERSION(6, 1, 0)
 /*
  * __vfs_getxattr was changed in Android Kernel v5.4
  * https://android.googlesource.com/kernel/common/+/3484eba91d6b529cc606486a2db79513f3db6c67
@@ -129,19 +130,21 @@ static inline ssize_t __vfs_getxattr(struct dentry *dentry, struct inode *inode,
 		__vfs_getxattr(dentry, inode, name, value, size)
 #endif
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 6, 0)
+#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 5, 0)
 #define do_blkdev_put(bdev, mode) blkdev_put(bdev, mode)
-#define do_blkdev_get_by_dev(dev, mode, holder) blkdev_get_by_dev(dev, mode, holder)
+#define do_blkdev_get_by_dev(dev, mode, holder) \
+	blkdev_get_by_dev(dev, mode, holder)
 #define do_ahash_request_set_callback(req, tfm, ahash, res) \
 	ahash_request_set_callback(req, tfm, ahash, res)
 #else
 #define do_blkdev_put(bdev, mode) blkdev_put(bdev, NULL)
-#define do_blkdev_get_by_dev(dev, mode, holder) blkdev_get_by_dev(dev, mode, holder, NULL)
+#define do_blkdev_get_by_dev(dev, mode, holder) \
+	blkdev_get_by_dev(dev, mode, holder, NULL)
 #define do_ahash_request_set_callback(req, tfm, ahash, res) \
 	ahash_request_set_callback(req, tfm, (void *)ahash, res)
 #endif
 
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 6, 0)
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 3, 0)
 #define vfs_getxattr_alloc(dentry, name, xattr_value, size, flags) \
 	vfs_getxattr_alloc(&nop_mnt_idmap, dentry, name, xattr_value, \
 			   size, flags)
@@ -284,7 +287,7 @@ struct loop_device {
 	int		lo_flags;
 	char		lo_file_name[LO_NAME_SIZE];
 
-	struct file *	lo_backing_file;
+	struct file *lo_backing_file;
 	struct block_device *lo_device;
 
 	gfp_t		old_gfp_mask;

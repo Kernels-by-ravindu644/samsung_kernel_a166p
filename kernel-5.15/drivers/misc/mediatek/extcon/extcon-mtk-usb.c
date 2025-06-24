@@ -26,11 +26,9 @@
 #include "tcpm.h"
 #endif
 
-#if IS_ENABLED(CONFIG_USB_NOTIFY_LAYER)
 #include <linux/usb_notify.h>
 
 static struct mtk_extcon_info *g_extcon;
-#endif
 
 extern bool is_primary_chg_probe_ok;
 extern bool is_2rd_primary_chg_probe_ok;
@@ -90,6 +88,9 @@ static void mtk_usb_extcon_update_role(struct work_struct *work)
 }
 
 #if IS_ENABLED(CONFIG_USB_NOTIFY_LAYER)
+void register_set_peripheral (int (*f)(bool));
+void register_set_host (int (*f)(bool));
+
 int mtk_usb_notify_set_mode(int role)
 {
 	struct mtk_extcon_info *extcon = g_extcon;
@@ -115,9 +116,25 @@ int mtk_usb_notify_set_mode(int role)
 	pr_info("%s: role %d--\n", __func__, role);
 	return 0;
 }
-EXPORT_SYMBOL(mtk_usb_notify_set_mode);
-#endif
 
+int set_host(bool enable){
+	if(enable) {
+		mtk_usb_notify_set_mode(USB_ROLE_HOST);
+	}else {
+		mtk_usb_notify_set_mode(USB_ROLE_NONE);
+	}
+	return 0;
+}
+
+int set_peripheral(bool enable){
+	if(enable) {
+		mtk_usb_notify_set_mode(USB_ROLE_DEVICE);
+	}else {
+		mtk_usb_notify_set_mode(USB_ROLE_NONE);
+	}
+	return 0;
+}
+#endif
 
 static int mtk_usb_extcon_set_role(struct mtk_extcon_info *extcon,
 						unsigned int role)
@@ -127,39 +144,24 @@ static int mtk_usb_extcon_set_role(struct mtk_extcon_info *extcon,
 #if IS_ENABLED(CONFIG_USB_NOTIFY_LAYER)
 	struct otg_notify *o_notify = get_otg_notify();
 	unsigned int cur_dr = extcon->c_role;
-
-	extcon->last_dr_event = role;
-
 	dev_info(extcon->dev, "curent role (%d), new role (%d)\n", cur_dr, role);
+    extcon->last_dr_event = role;
+
 	if (o_notify){
-		if (cur_dr == USB_ROLE_NONE &&
-			role == USB_ROLE_DEVICE) {
+		if (role == USB_ROLE_DEVICE) {
 			send_otg_notify(o_notify, NOTIFY_EVENT_VBUS, 1);
-		/* none -> host */
-		} else if (cur_dr == USB_ROLE_NONE &&
-				role == USB_ROLE_HOST) {
+		} else if (role == USB_ROLE_HOST) {
 			send_otg_notify(o_notify, NOTIFY_EVENT_HOST, 1);
-		/* device -> none */
-		} else if (cur_dr == USB_ROLE_DEVICE &&
-				role == USB_ROLE_NONE) {
-			send_otg_notify(o_notify, NOTIFY_EVENT_VBUS, 0);
-		/* host -> none */
-		} else if (cur_dr == USB_ROLE_HOST &&
-				role == USB_ROLE_NONE) {
-			send_otg_notify(o_notify, NOTIFY_EVENT_HOST, 0);
-		/* device -> host */
-		} else if (cur_dr == USB_ROLE_DEVICE &&
-				role == USB_ROLE_HOST) {
-			send_otg_notify(o_notify, NOTIFY_EVENT_VBUS, 0);
-			send_otg_notify(o_notify, NOTIFY_EVENT_HOST, 1);
-		/* host -> device */
-		} else if (cur_dr == USB_ROLE_HOST &&
-				role == USB_ROLE_DEVICE) {
-			send_otg_notify(o_notify, NOTIFY_EVENT_HOST, 0);
-			send_otg_notify(o_notify, NOTIFY_EVENT_VBUS, 1);
+		} else if (role == USB_ROLE_NONE) {
+			if (cur_dr == USB_ROLE_DEVICE) {
+				send_otg_notify(o_notify, NOTIFY_EVENT_VBUS, 0);
+			} else {
+				send_otg_notify(o_notify, NOTIFY_EVENT_HOST, 0);
+			}
 		}
-		return 0;
 	}
+
+	return 0;
 #endif
 
 	/* create and prepare worker */
@@ -214,8 +216,14 @@ static void mtk_usb_extcon_psy_detector(struct work_struct *work)
 	/* Workaround for PR_SWAP, IF tcpc_dev, then do not switch role. */
 	/* Since we will set USB to none when type-c plug out */
 	if (extcon->tcpc_dev) {
-		if (usb_is_online(extcon) && extcon->c_role == USB_ROLE_NONE)
-			mtk_usb_extcon_set_role(extcon, USB_ROLE_DEVICE);
+#if IS_ENABLED(CONFIG_USB_NOTIFIER)
+                if (usb_is_online(extcon) && extcon->c_role == USB_ROLE_NONE
+                        && extcon->last_dr_event != USB_ROLE_HOST)
+                        mtk_usb_extcon_set_role(extcon, USB_ROLE_DEVICE);
+#else
+                if (usb_is_online(extcon) && extcon->c_role == USB_ROLE_NONE)
+                        mtk_usb_extcon_set_role(extcon, USB_ROLE_DEVICE);
+#endif
 	} else {
 		if (usb_is_online(extcon))
 			mtk_usb_extcon_set_role(extcon, USB_ROLE_DEVICE);
@@ -622,6 +630,7 @@ static int mtk_usb_extcon_probe(struct platform_device *pdev)
 		return -ENOMEM;
 
 	extcon->dev = dev;
+	extcon->last_dr_event = USB_ROLE_NONE;
 
 	if (is_primary_chg_probe_ok || is_2rd_primary_chg_probe_ok) {
 		pr_err("%s: primary_chg probe ok\n", __func__);
@@ -694,6 +703,9 @@ static int mtk_usb_extcon_probe(struct platform_device *pdev)
 
 #if IS_ENABLED(CONFIG_USB_NOTIFY_LAYER)
 	g_extcon = extcon;
+	
+	register_set_peripheral(set_peripheral);
+	register_set_host(set_host);
 #endif
 
 	platform_set_drvdata(pdev, extcon);

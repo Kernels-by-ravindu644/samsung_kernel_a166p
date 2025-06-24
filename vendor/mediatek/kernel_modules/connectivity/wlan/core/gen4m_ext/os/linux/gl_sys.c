@@ -1827,12 +1827,12 @@ void sysGetExtCfg(struct ADAPTER *prAdapter)
 	u4MinValue = 0;
 	u4MaxValue = 100;
 	prWifiVar->ucRssiWeight = (uint8_t) wlanCfgGetUint32Range(
-		prAdapter, "RoamAPScore_RSSIWeight", 65,
+		prAdapter, "RoamAPScore_RSSIWeight", 70,
 		&u4MinValue, &u4MaxValue);
 	u4MinValue = 0;
 	u4MaxValue = 100;
 	prWifiVar->ucCUWeight = (uint8_t) wlanCfgGetUint32Range(
-		prAdapter, "RoamAPScore_CUWeight", 35,
+		prAdapter, "RoamAPScore_CUWeight", 30,
 		&u4MinValue, &u4MaxValue);
 	prWifiVar->cB1RssiFactorVal1 = (int8_t) wlanCfgGetInt32(
 		prAdapter, "RoamAPScore_Band1_RSSIFactorValue1", -55);

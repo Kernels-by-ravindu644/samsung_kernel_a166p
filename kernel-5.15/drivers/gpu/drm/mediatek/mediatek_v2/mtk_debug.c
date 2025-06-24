@@ -2706,6 +2706,48 @@ static bool is_disp_reg(uint32_t addr, char *comp_name, uint32_t comp_name_len)
 }
 #endif
 
+#if defined (CONFIG_DSI_PRE_OFF)
+static void ipanic_dsi_off(void)
+{
+	struct mtk_ddp_comp *comp;
+	struct drm_crtc *crtc;
+	struct mtk_drm_crtc *mtk_crtc;
+	static int count = 1;
+
+	if (!count) {
+        	DDPINFO("%s: is already called", __func__);
+		return;
+        }
+	count = 0;
+
+	DDPINFO("%s: +", __func__);
+
+	if (IS_ERR_OR_NULL(drm_dev)) {
+		DDPPR_ERR("%s, invalid drm dev\n", __func__);
+		return;
+	}
+	/* this debug cmd only for crtc0 */
+	crtc = list_first_entry(&(drm_dev)->mode_config.crtc_list,
+				typeof(*crtc), head);
+	if (IS_ERR_OR_NULL(crtc)) {
+		DDPPR_ERR("find crtc fail\n");
+		return;
+	}
+
+	mtk_crtc = to_mtk_crtc(crtc);
+	comp = mtk_ddp_comp_request_output(mtk_crtc);
+	if (!comp || !comp->funcs || !comp->funcs->io_cmd) {
+		DDPINFO("cannot find output component\n");
+		return;
+	}
+
+	mtk_drm_set_frame_skip(1);
+
+	comp->funcs->io_cmd(comp, NULL, DSI_POWEROFF, NULL);
+
+	DDPINFO("%s: -", __func__);
+}
+#else
 static void ipanic_lcm_reset(void)
 {
 	struct mtk_ddp_comp *comp;
@@ -2737,11 +2779,16 @@ static void ipanic_lcm_reset(void)
 	}
 
 	enable = 0;
-	comp->funcs->io_cmd(comp, NULL, LCM_RESET, &enable);
+	//+bug S98901AA1-13937,gaobowei.wt,ADD,20241218,when panic exception the screen has abnormal display issues.
+	comp->funcs->io_cmd(comp, NULL, LCM_POWER_OFF, &enable);
+	/*
 	mdelay(10);
 	enable = 1;
 	comp->funcs->io_cmd(comp, NULL, LCM_RESET, &enable);
+	*/
+	//-bug S98901AA1-13937,gaobowei.wt,ADD,20241218,when panic exception the screen has abnormal display issues.
 }
+#endif
 
 static void process_dbg_opt(const char *opt)
 {
@@ -5052,6 +5099,32 @@ out:
 	return simple_read_from_buffer(ubuf, count, ppos, buffer, n);
 }
 
+#if defined (CONFIG_DSI_PRE_OFF)
+static int cust_ipanic(struct notifier_block *this, unsigned long event, void *ptr)
+{
+	ipanic_dsi_off();
+
+	return 0;
+}
+
+static int cust_ipanic_die(struct notifier_block *self, unsigned long cmd, void *ptr)
+{
+	ipanic_dsi_off();
+
+	return 0;
+}
+
+static struct notifier_block cust_panic_blk = {
+	.notifier_call = cust_ipanic,
+	.priority = INT_MAX,
+};
+
+static struct notifier_block cust_die_blk = {
+	.notifier_call = cust_ipanic_die,
+	.priority = INT_MAX,
+};
+
+#else
 static int disp_ipanic(struct notifier_block *this, unsigned long event, void *ptr)
 {
 	ipanic_lcm_reset();
@@ -5075,6 +5148,7 @@ static struct notifier_block die_blk = {
 	.notifier_call = disp_ipanic_die,
 	.priority = 1,
 };
+#endif
 
 static const struct proc_ops hrt_lp_proc_fops = {
 	.proc_read = hrt_lp_proc_get,
@@ -5182,8 +5256,13 @@ void disp_dbg_probe(void)
 #endif
 
 	mtk_dp_debugfs_init();
+#if defined (CONFIG_DSI_PRE_OFF)
+	atomic_notifier_chain_register(&panic_notifier_list, &cust_panic_blk);
+	register_die_notifier(&cust_die_blk);
+#else
 	atomic_notifier_chain_register(&panic_notifier_list, &panic_blk);
 	register_die_notifier(&die_blk);
+#endif
 
 out:
 	return;

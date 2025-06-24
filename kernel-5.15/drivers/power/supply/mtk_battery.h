@@ -188,6 +188,7 @@ struct battery_data {
 	struct power_supply *chg_psy;
 	struct notifier_block battery_nb;
 	int bat_status;
+	int old_bat_status;
 	int bat_health;
 	int bat_present;
 	int bat_technology;

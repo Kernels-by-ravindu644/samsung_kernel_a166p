@@ -69,7 +69,17 @@
  *******************************************************************************
  */
 #include "precomp.h"
+/*CONNECTIVITY.WIFI.Driver liupeng6 2024/11/12 Begain*/
+#if defined(CONFIG_MTK_S98901AA1_DOMAIN_PWR)
+#include "rlm_txpwr_init_W3A16.h"
+#elif defined(CONFIG_MTK_S98902EA1_DOMAIN_PWR)
+#include "rlm_txpwr_init_W3F16.h"
+#elif defined(CONFIG_MTK_S98902AA1_DOMAIN_PWR)
+#include "rlm_txpwr_init_W3M16.h"
+#else
 #include "rlm_txpwr_init.h"
+#endif
+/*CONNECTIVITY.WIFI.Driver liupeng6 2024/11/12 End*/
 #if (CFG_SUPPORT_WIFI_6G_PWR_MODE == 1)
 #include "he_ie.h"
 #endif
@@ -158,6 +168,7 @@ char *g_au1TxPwrDefaultSetting[] = {
 	"_G_Scenario;3;2;1;[ALL,,,,,,,,,,,,]",
 	"_G_Scenario;4;2;1;[ALL,,,,,,,,,,,,]",
 	"_G_Scenario;5;2;1;[ALL,,,,,,,,,,,,]",
+	"_Cus_TxPwr_Call;1;2;1;[ALL,,,,,,,,,,,,]",
 #else
 	"_SAR_PwrLevel;1;2;1;[2G4,,,,,,,,,][5G,,,,,,,,,]",
 	"_G_Scenario;1;2;1;[ALL,,,,,,,,,]",
@@ -165,6 +176,7 @@ char *g_au1TxPwrDefaultSetting[] = {
 	"_G_Scenario;3;2;1;[ALL,,,,,,,,,]",
 	"_G_Scenario;4;2;1;[ALL,,,,,,,,,]",
 	"_G_Scenario;5;2;1;[ALL,,,,,,,,,]",
+	"_Cus_TxPwr_Call;1;2;1;[ALL,,,,,,,,,]",
 #endif /* CFG_SUPPORT_DYNA_TX_PWR_CTRL_OFDM_SETTING */
 };
 #endif
@@ -721,8 +733,6 @@ struct DOMAIN_INFO_ENTRY arSupportedRegDomains[] = {
 		{
 			{81, BAND_2G4, CHNL_SPAN_5, 1, 13, FALSE}
 			,	/*CH_SET_2G4_1_13 */
-			{82, BAND_2G4, CHNL_SPAN_5, 14, 1, FALSE}
-			,	/*CH_SET_2G4_14_1 */
 			{115, BAND_5G, CHNL_SPAN_20, 36, 4, FALSE}
 			,	/*CH_SET_UNII_LOW_36_48 */
 			{118, BAND_5G, CHNL_SPAN_20, 52, 4, TRUE}
@@ -4389,7 +4399,7 @@ rlmDomainBuildCmdByDefaultTable(struct CMD_SET_COUNTRY_CHANNEL_POWER_LIMIT
 
 			prCmd->ucNum++;
 
-			if (prCmd->ucNum > MAX_CMD_SUPPORT_CHANNEL_NUM) {
+			if (prCmd->ucNum >= MAX_CMD_SUPPORT_CHANNEL_NUM) {
 				DBGLOG(RLM, WARN,
 					"etype = %d, out of MAX CH Num\n",
 					eType);

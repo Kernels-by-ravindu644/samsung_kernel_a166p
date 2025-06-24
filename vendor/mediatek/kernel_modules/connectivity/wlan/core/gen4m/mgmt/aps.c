@@ -147,6 +147,8 @@
 #define WEIGHT_GBAND_COEX_DOWNGRADE		70 /* 0~100 */
 #define CU_6G_INDEX_OFFSET			256
 
+#define BTM_MIN_RSSI				-75
+
 /*******************************************************************************
  *                             D A T A   T Y P E S
  *******************************************************************************
@@ -1480,8 +1482,10 @@ uint8_t apsSanityCheckBssDesc(struct ADAPTER *prAdapter,
 #if (CFG_EXT_ROAMING == 1)
 		int32_t r1, r2;
 		struct BSS_DESC *target = NULL;
+		struct BSS_TRANSITION_MGT_PARAM *prBtmParam;
 
 		target = aisGetTargetBssDesc(prAdapter, ucBssIndex);
+		prBtmParam = aisGetBTMParam(prAdapter, ucBssIndex);
 		r1 = RCPI_TO_dBm(target ? target->ucRCPI : RCPI_LOW_BOUND);
 		r2 = RCPI_TO_dBm(prBssDesc->ucRCPI);
 		switch (eRoamReason) {
@@ -1499,10 +1503,23 @@ uint8_t apsSanityCheckBssDesc(struct ADAPTER *prAdapter,
 		case ROAMING_REASON_BT_COEX:
 		{
 			if (r2 < prAdapter->rWifiVar.cRBTCRssi) {
-				log_dbg(SCN, INFO,
+				DBGLOG(APS, WARN,
 					MACSTR " BTCoex low rssi %d < %d\n",
 					MAC2STR(prBssDesc->aucBSSID),
 					r2, prAdapter->rWifiVar.ucRBTCDelta);
+				return FALSE;
+			}
+			break;
+		}
+		case ROAMING_REASON_BTM:
+		{
+			if ((prBtmParam->ucRequestMode &
+				WNM_BSS_TM_REQ_DISASSOC_IMMINENT) &&
+			    (r2 < BTM_MIN_RSSI)) {
+				DBGLOG(APS, WARN,
+					MACSTR " BTM low rssi %d < %d\n",
+					MAC2STR(prBssDesc->aucBSSID),
+					r2, BTM_MIN_RSSI);
 				return FALSE;
 			}
 			break;

@@ -2207,9 +2207,9 @@ void nicEventRddPulseDump(struct ADAPTER *prAdapter,
 
 	if (prRddPulseEvent->u4FuncLength >
 		(RX_GET_PACKET_MAX_SIZE(prAdapter)
-			- sizeof(struct WIFI_EVENT))) {
+			- OFFSET_OF(struct WIFI_EVENT, aucBuffer))) {
 		DBGLOG(INIT, ERROR,
-			"u4FuncLength %d out of valid event length!\n",
+			"u4FuncLength %u out of valid event length!\n",
 			prRddPulseEvent->u4FuncLength);
 		return;
 	}
@@ -3580,7 +3580,11 @@ void nicExtEventICapIQData(struct ADAPTER *prAdapter,
 
 	prIcapInfo = &prAdapter->rIcapInfo;
 	prIQArray = prIcapInfo->prIQArray;
-	ASSERT(prIQArray);
+
+	if (prIQArray == NULL) {
+		DBGLOG(RFTEST, ERROR, "prIQArray is NULL\n");
+		return;
+	}
 
 	/* If we receive the packet which is delivered from
 	 * last time data-capure, we need to drop it.
@@ -3596,6 +3600,20 @@ void nicExtEventICapIQData(struct ADAPTER *prAdapter,
 		DBGLOG(RFTEST, ERROR,
 		       "Packet out of order: Pkt num %d, EventCnt %d\n",
 		       prICapEvent->u4PktNum, prIcapInfo->u4ICapEventCnt);
+		return;
+	}
+
+	if (prICapEvent->u4WFCnt > MAX_ANTENNA_NUM
+		|| prICapEvent->u4WFCnt > MAX_IQ_ARRAY_WF_CNT) {
+		DBGLOG(RFTEST, WARN,
+		       "u4WFCnt is larger than Max Ant Num\n");
+		return;
+	}
+
+	if (prICapEvent->u4SmplCnt >
+		(ICAP_EVENT_DATA_SAMPLE / NUM_OF_CAP_TYPE)) {
+		DBGLOG(RFTEST, WARN,
+		       "u4SmplCnt is larger than buffer size\n");
 		return;
 	}
 

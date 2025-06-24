@@ -18,6 +18,9 @@
 
 #define ENABLE_WT_JEITA
 #define STEP_TIMER           6
+#ifndef CONFIG_WT_COMPILE_FACTORY_VERSION
+#define ONEUI_6P1_CHG_PROTECION_ENABLE
+#endif
 
 extern int pe50_get_log_level(void);
 #define PE50_DBG(fmt, ...) \
@@ -335,4 +338,8 @@ extern int pe50_hal_get_adc_accuracy(struct chg_alg_device *alg,
 				     enum chg_idx chgidx,
 				     enum pe50_adc_channel chan, int *val);
 extern int pe50_hal_init_chip(struct chg_alg_device *alg, enum chg_idx chgidx);
+#if defined (ONEUI_6P1_CHG_PROTECION_ENABLE)
+extern int wt_batt_full_capacity_check_for_cp(void);
+#endif
+
 #endif /* __MTK_PE5_H */

@@ -1327,7 +1327,7 @@ static void ufs_mtk_trace_vh_update_sdev(void *data, struct scsi_device *sdev)
 	struct ufs_hba *hba = shost_priv(sdev->host);
 	struct ufs_mtk_host *host = ufshcd_get_variant(hba);
 
-	sdev->broken_fua = 1;
+	sdev->broken_fua = 0;
 
 	dev_dbg(hba->dev, "lu %d slave configured", sdev->lun);
 

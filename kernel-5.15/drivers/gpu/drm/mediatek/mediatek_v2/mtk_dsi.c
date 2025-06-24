@@ -2234,6 +2234,8 @@ static void mtk_dsi_cmdq_poll(struct mtk_ddp_comp *comp,
 s32 mtk_dsi_poll_for_idle(struct mtk_dsi *dsi, struct cmdq_pkt *handle)
 {
 	unsigned int loop_cnt = 0;
+	unsigned int poll_cnt = 0;
+
 	s32 tmp;
 
 	if (!dsi) {
@@ -2249,7 +2251,14 @@ s32 mtk_dsi_poll_for_idle(struct mtk_dsi *dsi, struct cmdq_pkt *handle)
 	}
 #endif
 
-	while (loop_cnt < 100 * 1000) {
+
+#if defined(CUSTOMER_USE_SIMPLE_API)
+	poll_cnt = 10;
+#else
+	poll_cnt = 100;
+#endif
+
+	while (loop_cnt < poll_cnt * 1000) {
 		udelay(1);
 		tmp = readl(dsi->regs + DSI_INTSTA);
 		if (!(tmp & DSI_BUSY))
@@ -7418,10 +7427,16 @@ done:
 static ssize_t mtk_dsi_host_send_cmd(struct mtk_dsi *dsi,
 				     const struct mipi_dsi_msg *msg, u8 flag)
 {
+	bool delay_fg = 0;
+
 	mtk_dsi_wait_idle(dsi, flag, 2000, NULL);
 	mtk_dsi_irq_data_clear(dsi, flag);
 	mtk_dsi_cmdq(dsi, msg);
 	mtk_dsi_start(dsi);
+
+#if defined(CUSTOMER_USE_SIMPLE_API)
+	delay_fg = 1;
+#endif
 
 	if (MTK_DSI_HOST_IS_READ(msg->type)) {
 		unsigned int loop_cnt = 0;
@@ -7433,7 +7448,10 @@ static ssize_t mtk_dsi_host_send_cmd(struct mtk_dsi *dsi,
 			if ((tmp & LPRX_RD_RDY_INT_FLAG))
 				break;
 			loop_cnt++;
-			usleep_range(100, 200);
+			if(delay_fg)
+				udelay(100);
+			else
+				usleep_range(100, 200);
 		}
 		DDPINFO("%s wait RXDY done\n", __func__);
 		mtk_dsi_mask(dsi, DSI_INTSTA, LPRX_RD_RDY_INT_FLAG, 0);
@@ -9681,6 +9699,24 @@ static int mtk_dsi_io_cmd(struct mtk_ddp_comp *comp, struct cmdq_pkt *handle,
 			panel_ext->funcs->reset(dsi->panel, *(int *)params);
 	}
 		break;
+	//+bug S98901AA1-13937,gaobowei.wt,ADD,20241218,when panic exception the screen has abnormal display issues.
+	case LCM_POWER_OFF:
+	{
+		struct mtk_dsi *dsi =
+			container_of(comp, struct mtk_dsi, ddp_comp);
+
+		if (dsi->panel && dsi->panel->funcs
+			&& dsi->panel->funcs->disable) {
+				dsi->panel->funcs->disable(dsi->panel);
+		}
+
+		if (panel_ext && panel_ext->funcs
+			&& panel_ext->funcs->reset) {
+				panel_ext->funcs->set_power(dsi->panel, *(int *)params);
+		}
+	}
+		break;
+	//-bug S98901AA1-13937,gaobowei.wt,ADD,20241218,when panic exception the screen has abnormal display issues.
 	case LCM_CUST_FUNC:
 	{
 		struct mtk_dsi *dsi =
@@ -10402,6 +10438,15 @@ static int mtk_dsi_io_cmd(struct mtk_ddp_comp *comp, struct cmdq_pkt *handle,
 			dsi_device->mode_flags &= ~MIPI_DSI_MODE_LPM;
 	}
 		break;
+	case DSI_POWEROFF:
+	{
+		struct mtk_dsi *dsi =
+			container_of(comp, struct mtk_dsi, ddp_comp);
+
+		if (dsi->clk_refcnt != 0)
+			writel(0, dsi->regs + DSI_START);
+	}
+	break;
 	/****Simple api end****/
 
 	case DSI_SET_DISP_ON_CMD:

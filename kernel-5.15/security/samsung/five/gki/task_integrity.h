@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: GPL-2.0 */
 /*
  * Task Integrity Verifier
  *
@@ -29,7 +30,7 @@ struct task_integrity;
 
 struct integrity_label {
 	uint16_t len;
-	uint8_t data[0];
+	uint8_t data[];
 } __packed;
 
 enum five_event {
@@ -142,13 +143,15 @@ void task_integrity_clear(struct task_integrity *tint);
 
 static inline void task_integrity_get(struct task_integrity *tint)
 {
-	BUG_ON(!atomic_read(&tint->usage_count));
+	if (unlikely(!atomic_read(&tint->usage_count)))
+		return;
 	atomic_inc(&tint->usage_count);
 }
 
 static inline void task_integrity_put(struct task_integrity *tint)
 {
-	BUG_ON(!atomic_read(&tint->usage_count));
+	if (unlikely(!atomic_read(&tint->usage_count)))
+		return;
 	if (atomic_dec_and_test(&tint->usage_count))
 		task_integrity_free(tint);
 }

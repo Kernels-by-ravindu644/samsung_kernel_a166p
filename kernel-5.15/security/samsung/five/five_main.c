@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
  * This code is based on IMA's code
  *
@@ -26,7 +27,6 @@
 #include <crypto/hash_info.h>
 #include <linux/ptrace.h>
 #include <linux/task_integrity.h>
-#include <linux/reboot.h>
 #include <linux/debugfs.h>
 #include <linux/fs.h>
 #include <linux/shmem_fs.h>
@@ -36,11 +36,9 @@
 #include "five_audit.h"
 #include "five_hooks.h"
 #include "five_state.h"
-#include "five_pa.h"
 #include "five_porting.h"
 #include "five_cache.h"
 #include "five_dmverity.h"
-#include "five_dsms.h"
 #include "five_testing.h"
 
 /* crash_dump in Android 12 uses this request even if Kernel doesn't
@@ -49,7 +47,6 @@
 #define PTRACE_PEEKMTETAGS 33
 #endif
 
-static const bool check_dex2oat_binary = true;
 static const bool check_memfd_file = true;
 
 static struct file *memfd_file __ro_after_init;
@@ -234,7 +231,7 @@ const char *five_d_path(const struct path *path, char **pathbuf, char *namebuf)
 	}
 
 	if (!pathname) {
-		strlcpy(namebuf, path->dentry->d_name.name, NAME_MAX);
+		strscpy(namebuf, path->dentry->d_name.name, NAME_MAX);
 		pathname = namebuf;
 	}
 
@@ -439,8 +436,6 @@ void five_file_free(struct file *file)
 	if (!S_ISREG(inode->i_mode))
 		return;
 
-	fivepa_fsignature_free(file);
-
 	iint = integrity_iint_find(inode);
 	if (!iint)
 		return;
@@ -469,69 +464,6 @@ const char *five_get_string_fn(enum five_hooks fn)
 	return "unknown-function";
 }
 
-static inline bool is_dex2oat_binary(const struct file *file)
-{
-	const char *pathname = NULL;
-	char *pathbuf = NULL;
-	const char * const dex2oat_full_path[] = {
-		/* R OS */
-		"/apex/com.android.art/bin/dex2oat",
-		"/apex/com.android.art/bin/dex2oat32",
-		"/apex/com.android.art/bin/dex2oat64",
-		/* Q OS */
-		"/apex/com.android.runtime/bin/dex2oat"
-	};
-	char filename[NAME_MAX];
-	bool res = false;
-	size_t i;
-
-	if (!file || !file->f_path.dentry)
-		return false;
-
-	if (strncmp(file->f_path.dentry->d_iname, "dex2oat",
-			sizeof("dex2oat")) &&
-	    strncmp(file->f_path.dentry->d_iname, "dex2oat32",
-			sizeof("dex2oat32")) &&
-	    strncmp(file->f_path.dentry->d_iname, "dex2oat64",
-			sizeof("dex2oat64")))
-		return false;
-
-	pathname = five_d_path(&file->f_path, &pathbuf, filename);
-
-	for (i = 0; i < ARRAY_SIZE(dex2oat_full_path); ++i) {
-		if (!strncmp(pathname, dex2oat_full_path[i],
-					strlen(dex2oat_full_path[i]) + 1)) {
-			res = true;
-			break;
-		}
-	}
-
-	if (pathbuf)
-		__putname(pathbuf);
-
-	return res;
-}
-
-static inline bool match_trusted_executable(const struct five_cert *cert,
-				const struct integrity_iint_cache *iint,
-				const struct file *file)
-{
-	const struct five_cert_header *hdr = NULL;
-
-	if (!cert)
-		return check_dex2oat_binary && is_dex2oat_binary(file);
-
-	if (five_get_cache_status(iint) != FIVE_FILE_RSA)
-		return false;
-
-	hdr = (const struct five_cert_header *)cert->body.header->value;
-
-	if (hdr->privilege == FIVE_PRIV_ALLOW_SIGN)
-		return true;
-
-	return false;
-}
-
 static inline void task_integrity_processing(struct task_integrity *tint)
 {
 	tint->user_value = INTEGRITY_PROCESSING;
@@ -549,11 +481,7 @@ static void process_file(struct task_struct *task,
 {
 	struct inode *inode = d_real_inode(file_dentry(file));
 	struct integrity_iint_cache *iint = NULL;
-	struct five_cert cert = { {0} };
-	struct five_cert *pcert = NULL;
 	int rc = -ENOMEM;
-	char *xattr_value = NULL;
-	int xattr_len = 0;
 
 	if (!S_ISREG(inode->i_mode)) {
 		rc = 0;
@@ -570,32 +498,7 @@ static void process_file(struct task_struct *task,
 		goto out;
 	}
 
-	xattr_len = five_read_xattr(d_real_comp(file->f_path.dentry),
-			&xattr_value);
-	if (xattr_value) {
-		if (xattr_len) {
-			rc = five_cert_fillout(&cert, xattr_value, xattr_len);
-			if (rc) {
-				pr_err("FIVE: certificate is incorrect inode=%lu\n",
-								inode->i_ino);
-				goto out;
-			}
-
-			pcert = &cert;
-
-			if (file->f_flags & O_DIRECT) {
-				rc = -EACCES;
-				goto out;
-			}
-		} else {
-			five_audit_info(task, file, "zero length", 0, 0,
-						"Found a dummy-cert", rc);
-		}
-	}
-
-	rc = five_appraise_measurement(task, function, iint, file, pcert);
-	if (!rc && match_trusted_executable(pcert, iint, file))
-		iint->five_flags |= FIVE_TRUSTED_FILE;
+	rc = five_appraise_measurement(task, function, iint, file, NULL);
 
 out:
 	if (rc && iint)
@@ -605,8 +508,8 @@ out:
 	result->task = task;
 	result->iint = iint;
 	result->fn = function;
-	result->xattr = xattr_value;
-	result->xattr_len = (size_t)xattr_len;
+	result->xattr = NULL;
+	result->xattr_len = 0;
 
 	if (!iint || five_get_cache_status(iint) == FIVE_FILE_UNKNOWN
 			|| five_get_cache_status(iint) == FIVE_FILE_FAIL)
@@ -644,9 +547,6 @@ static void process_measurement(const struct processing_event_list *params)
 	file_verification_result_deinit(&file_result);
 }
 
-#define MFD_NAME_PREFIX "memfd:"
-#define MFD_NAME_PREFIX_LEN (sizeof(MFD_NAME_PREFIX) - 1)
-
 static bool is_memfd_file(struct file *file)
 {
 	struct inode *inode;
@@ -658,12 +558,32 @@ static bool is_memfd_file(struct file *file)
 	memfd_inode = file_inode(memfd_file);
 	inode = file_inode(file);
 	if (inode && memfd_inode && inode->i_sb == memfd_inode->i_sb)
-		if (file->f_path.dentry &&
-			!strncmp(file->f_path.dentry->d_iname, MFD_NAME_PREFIX,
-							MFD_NAME_PREFIX_LEN))
-			return true;
+		return true;
 
 	return false;
+}
+
+static bool is_dalvik_cache_file(struct file *file)
+{
+	const char dalvik_prefix[] = "/data/dalvik-cache/arm";
+
+	const char *pathname = NULL;
+	char *pathbuf = NULL;
+
+	char filename[NAME_MAX];
+	bool res = false;
+
+	if (!file || !file->f_path.dentry)
+		return false;
+
+	pathname = five_d_path(&file->f_path, &pathbuf, filename);
+	if (!strncmp(pathname, dalvik_prefix, strlen(dalvik_prefix)))
+		res = true;
+
+	if (pathbuf)
+		__putname(pathbuf);
+
+	return res;
 }
 
 /**
@@ -687,7 +607,7 @@ int five_file_mmap(struct file *file, unsigned long prot)
 		return 0;
 
 	if (file && task_integrity_user_read(tint)) {
-		if (prot & PROT_EXEC) {
+		if ((prot & PROT_EXEC) && !is_dalvik_cache_file(file)) {
 			rc = push_file_event_bunch(task, file, MMAP_CHECK);
 			if (rc)
 				return rc;
@@ -753,35 +673,8 @@ int five_bprm_check(struct linux_binprm *bprm)
 }
 #endif
 
-/**
- * This function handles two situations:
- * 1. Device had been rebooted before five_sign finished.
- *    Then xattr_len will be zero and iint->five_signing will be false.
- * 2. The file is being signing when another process tries to open it.
- *    Then xattr_len will be zero and iint->five_signing will be true.
- *
- * - five_fcntl_edit stores the xattr with zero length and set
- *   iint->five_signing to true
- * - five_fcntl_sign stores correct certificates and set
- *   iint->five_signing to false
- *
- * On success returns 0
- */
 int five_file_open(struct file *file)
 {
-	ssize_t xattr_len;
-	struct inode *inode = file_inode(file);
-
-	if (!S_ISREG(inode->i_mode))
-		return 0;
-
-	xattr_len = vfs_getxattr(file->f_path.dentry, XATTR_NAME_FIVE,
-					NULL, 0);
-	if (xattr_len == 0) {
-		five_audit_verbose(current, file, "dummy-cert", 0, 0,
-					"Found a dummy-cert", 0);
-	}
-
 	return 0;
 }
 
@@ -803,11 +696,6 @@ int five_file_verify(struct task_struct *task, struct file *file)
 
 	return rc;
 }
-
-static struct notifier_block five_reboot_nb = {
-	.notifier_call = five_reboot_notifier,
-	.priority = INT_MAX,
-};
 
 int five_hash_algo __ro_after_init = HASH_ALGO_SHA1;
 
@@ -839,10 +727,6 @@ int __init init_five(void)
 	if (error)
 		return error;
 
-	error = register_reboot_notifier(&five_reboot_nb);
-	if (error)
-		return error;
-
 /**
  * This empty file is needed in is_memfd_file() function.
  * The only way to check whether the file was created using memfd_create()
@@ -860,8 +744,6 @@ int __init init_five(void)
 	error = init_fs();
 	if (error)
 		return error;
-
-	five_dsms_init("1", 0);
 
 	error = five_init_dmverity();
 
@@ -898,6 +780,8 @@ struct bprm_hook_context {
 	struct work_struct data_work;
 	struct task_struct *task;
 	struct task_struct *child_task;
+	enum task_integrity_value parent_tint_value;
+	enum task_integrity_value child_tint_value;
 };
 
 static void bprm_hook_handler(struct work_struct *in_data)
@@ -908,7 +792,9 @@ static void bprm_hook_handler(struct work_struct *in_data)
 	if (unlikely(!context))
 		return;
 
-	five_hook_task_forked(context->task, context->child_task);
+	five_hook_task_forked(context->task, context->child_task,
+						  context->parent_tint_value,
+						  context->child_tint_value);
 
 	put_task_struct(context->task);
 	put_task_struct(context->child_task);
@@ -981,6 +867,10 @@ int five_fork(struct task_struct *task, struct task_struct *child_task)
 
 	get_task_struct(task);
 	get_task_struct(child_task);
+	context->parent_tint_value =
+		task_integrity_read(TASK_INTEGRITY(task));
+	context->child_tint_value =
+		task_integrity_read(TASK_INTEGRITY(child_task));
 	context->task = task;
 	context->child_task = child_task;
 	INIT_WORK(&context->data_work, bprm_hook_handler);

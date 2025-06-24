@@ -635,9 +635,12 @@ enum mtk_ddp_io_cmd {
 	SET_LCM_DCS_CMD,
 	SET_LCM_CMDQ,
 	READ_LCM_DCS_CMD,
+	DSI_POWEROFF,
 	/* Simple api end*/
 	DSI_SET_DISP_ON_CMD,
 	DSI_HBM_SET_LCM,
+	//bug S98901AA1-13937,gaobowei.wt,ADD,20241218,when panic exception the screen has abnormal display issues.
+	LCM_POWER_OFF,
 };
 
 enum mtk_ddp_comp_apsrc_crtc_id {

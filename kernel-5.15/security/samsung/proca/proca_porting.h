@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: GPL-2.0 */
 /*
  * This is needed backporting of source code from Kernel version 4.x
  *
@@ -262,10 +263,13 @@ static inline int base64_encode(const u8 *src, int srclen, char *dst)
 #endif
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 6, 0)
-#define __vfs_setxattr_noperm(dentry, name, value, size, flags) \
-		__vfs_setxattr_noperm(&nop_mnt_idmap, dentry, name, value, size, flags)
 #define locks_inode(file) file_inode(file)
 #define class_create(module, name) class_create(name)
+#endif
+
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 3, 0)
+#define __vfs_setxattr_noperm(dentry, name, value, size, flags) \
+		__vfs_setxattr_noperm(&nop_mnt_idmap, dentry, name, value, size, flags)
 #elif LINUX_VERSION_CODE >= KERNEL_VERSION(5, 12, 0)
 #define __vfs_setxattr_noperm(dentry, name, value, size, flags) \
 		__vfs_setxattr_noperm(&init_user_ns, dentry, name, value, size, flags)

@@ -537,6 +537,9 @@ int32_t iniFindNextToken(struct INI_PARSE_STATE_S *state);
 
 #endif /* _ROAMING_EXT_H */
 
+uint32_t wlanSetEssBandBitmap(struct ADAPTER *prAdapter,
+	uint8_t ucEssBandBitMap);
+
 void roamingFsmSetSingleScanCadence(struct ADAPTER *prAdapter,
 	uint8_t ucBssIndex);
 

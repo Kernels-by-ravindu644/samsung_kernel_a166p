@@ -4461,3 +4461,14 @@ u_int8_t rsnIsFtOverTheAir(struct ADAPTER *prAdapter, uint8_t ucBssIdx,
 	return FALSE;
 }
 
+u_int8_t rsnHasNonce(const uint8_t *pucNonceAddr)
+{
+	uint8_t i;
+
+	for (i = 0; i < WPA_NONCE_LEN; i++)
+		if (pucNonceAddr[i] != 0)
+			return TRUE;
+
+	return FALSE;
+}
+

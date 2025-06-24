@@ -25,18 +25,44 @@ static int32_t stk_init_flag = 0;
 #else
 #include <linux/wakelock.h>
 #endif
+
 bool pause_mode = 0;
 struct stk_data *global_stk;
 static struct wake_lock stk501xx_wake_lock;
 static volatile uint8_t stk501xx_irq_from_suspend_flag = 0;
-#if SAR_IN_FRANCE
+#ifdef SAR_IN_FRANCE
 #define MAX_INT_COUNT 26
+static bool is_anfr = false;
 #endif
 
 #ifdef STK_BUS_I2C
 #define MAX_I2C_MANAGER_NUM     5
 
+
 void stk_report_sar_data(struct stk_data* stk);
+
+#if SAR_IN_FRANCE
+
+extern char *get_board_id(void);
+
+static int is_anfr_board(void)
+{
+    char *boardid_string = NULL;
+
+    boardid_string = get_board_id();
+    STK_ERR("boardid: %s\n", boardid_string);
+    if(NULL != boardid_string) {
+        if((0 == strncmp(boardid_string, "S98902AA1", 9)) || (0 == strncmp(boardid_string, "S98902AA2", 9)) ||
+            (0 == strncmp(boardid_string, "S98902AA3", 9)) || (0 == strncmp(boardid_string, "S98902AA4", 9)))
+        {
+            STK_ERR("It's dont need anfr!\n");
+            return 0;
+        }
+        return 1;
+    }
+    return -1;
+}
+#endif
 
 struct i2c_manager *pi2c_mgr[MAX_I2C_MANAGER_NUM] = {NULL};
 
@@ -695,7 +721,9 @@ static void gpio_callback(struct work_struct *work)
 
 static irqreturn_t stk_gpio_irq_handler(int irq, void *data)
 {
+    stk501xx_wrapper *stk_wrapper = container_of(global_stk, stk501xx_wrapper,stk);
     gpio_manager *pData = data;
+    pm_stay_awake(&stk_wrapper->i2c_mgr.client->dev);
     disable_irq_nosync(irq);
     schedule_work(&pData->stk_work);
     return IRQ_HANDLED;
@@ -1534,17 +1562,24 @@ static void stk_force_report_data(struct stk_data* stk, int8_t nf_flag)
 
     wake_lock_timeout(&stk501xx_wake_lock, HZ * 1);
     for (i = 0; i < ch_num; i ++)
-    {
-        /*with ss sensor hal*/
-        input_report_rel(stk_wrapper->channels[i].input_dev, REL_MISC, nf_flag);
-        input_report_rel(stk_wrapper->channels[i].input_dev, REL_X, nf_flag);
-//        input_report_abs(stk_wrapper->channels[i].input_dev, ABS_DISTANCE, SAR_STATE_FAR);
-        input_sync(stk_wrapper->channels[i].input_dev);
+    {   
+        if(i == 1)
+            continue;
+        if(stk_wrapper->channels[i].enabled){
+            /*with ss sensor hal*/
+            input_report_rel(stk_wrapper->channels[i].input_dev, REL_MISC, nf_flag);
+            input_report_rel(stk_wrapper->channels[i].input_dev, REL_X, nf_flag);
+    //        input_report_abs(stk_wrapper->channels[i].input_dev, ABS_DISTANCE, SAR_STATE_FAR);
+            input_sync(stk_wrapper->channels[i].input_dev);
 #if SAR_IN_FRANCE
-        stk->ch_status[i] = SAR_STATE_FAR;
+            if(is_anfr == true){
+                stk->ch_status[i] = SAR_STATE_FAR;
+            }
 #endif
-        stk->grip_status[i] = SAR_STATE_FAR;
-        STK_ERR("stk->grip_status[%d] = %d", i, stk->grip_status[i]);
+            stk->grip_status[i] = SAR_STATE_FAR;
+            STK_ERR("stk->nd_flag[%d] = %d", i, nf_flag);
+            STK_ERR("stk->grip_status[%d] = %d", i, stk->grip_status[i]);
+        }
     }
 }
 
@@ -1575,7 +1610,15 @@ static void stk_chk_sar_en_irq(stk501xx_wrapper *stk_wrapper, uint8_t ch_idx)
     {
         STK_ERR("Sar disabled but any channel report enable, enable Sar\n");
         stk501xx_set_enable(global_stk, 1);
-        stk_force_report_data(global_stk, SAR_STATE_NEAR);
+#if SAR_IN_FRANCE
+        if(is_anfr == true){
+            if (global_stk->sar_first_boot)
+            {
+                STK_ERR("ANFR enable report_sar_status \n");
+                stk_force_report_data(global_stk, SAR_STATE_NEAR);
+            }
+        }
+#endif
     }
 
     if( global_stk->enabled && !has_ph_en) //SAR enable but all channel report disable
@@ -2056,13 +2099,14 @@ int32_t stk501xx_show_all_reg(struct stk_data* stk)
         STK_ADDR_SENS_CTRL_PH5,
         STK_ADDR_SENS_CTRL_PH6,
 
-        STK_ADDR_CORRECTION_PH0,
         STK_ADDR_CORRECTION_PH1,
-        STK_ADDR_CORRECTION_PH2,
         STK_ADDR_CORRECTION_PH3,
-        STK_ADDR_CORRECTION_PH4,
         STK_ADDR_CORRECTION_PH5,
         STK_ADDR_CORRECTION_PH6,
+        STK_FILT_CFG_PH1_VALUE,
+        STK_FILT_CFG_PH3_VALUE,
+        STK_FILT_CFG_PH5_VALUE,
+        STK_FILT_CFG_PH6_VALUE,
     };
     reg_num = sizeof(reg_array) / sizeof(uint64_t);
     STK_ERR("stk501xx_show_all_reg::");
@@ -2114,18 +2158,20 @@ static int32_t stk_reg_init(struct stk_data* stk)
     STK_REG_READ(stk, STK_ADDR_TRIGGER_CMD, (uint8_t*)&val);
     STK_TIMER_BUSY_WAIT(stk, 250, MS_DELAY); //wait one time scan.
 #if SAR_IN_FRANCE
-    if (stk->sar_first_boot)
-    {
-        stk->sar_first_fadc[0] = stk501xx_read_offset_fadc(stk, 0);
-        stk->sar_first_fadc[1] = stk501xx_read_offset_fadc(stk, 1);
-        stk->sar_first_fadc[2] = stk501xx_read_offset_fadc(stk, 2);
-        stk->sar_first_fadc[3] = stk501xx_read_offset_fadc(stk, 3);
-        //debug
-        STK_ERR("ch0:backgrand_cap = %d", stk->sar_first_fadc[0]);
-        STK_ERR("ch1:backgrand_cap = %d", stk->sar_first_fadc[1]);
-        STK_ERR("ch2:backgrand_cap = %d", stk->sar_first_fadc[2]);
-        STK_ERR("ch3:backgrand_cap = %d", stk->sar_first_fadc[3]);
-        STK_ERR("stk->cadc_weight =%d\n", stk->cadc_weight);
+    if(is_anfr == true){
+        if (stk->sar_first_boot)
+        {
+            stk->sar_first_fadc[0] = stk501xx_read_offset_fadc(stk, 0);
+            stk->sar_first_fadc[1] = stk501xx_read_offset_fadc(stk, 1);
+            stk->sar_first_fadc[2] = stk501xx_read_offset_fadc(stk, 2);
+            stk->sar_first_fadc[3] = stk501xx_read_offset_fadc(stk, 3);
+            //debug
+            STK_ERR("ch0:backgrand_cap = %d", stk->sar_first_fadc[0]);
+            STK_ERR("ch1:backgrand_cap = %d", stk->sar_first_fadc[1]);
+            STK_ERR("ch2:backgrand_cap = %d", stk->sar_first_fadc[2]);
+            STK_ERR("ch3:backgrand_cap = %d", stk->sar_first_fadc[3]);
+            STK_ERR("stk->cadc_weight =%d\n", stk->cadc_weight);
+        }
     }
 #endif
     // set power down for default
@@ -2217,6 +2263,7 @@ void stk_work_queue(void *stkdata)
 {
     struct stk_data *stk = (struct stk_data*)stkdata;
     uint32_t flag = 0, prox_flag = 0;
+    stk501xx_wrapper *stk_wrapper = container_of(stk, stk501xx_wrapper, stk);
 #ifdef STK_INTERRUPT_MODE
     STK_ERR("stk_work_queue:: Interrupt mode");
 #elif defined STK_POLLING_MODE
@@ -2237,6 +2284,7 @@ void stk_work_queue(void *stkdata)
     if ( flag & STK_IRQ_SOURCE_ENABLE_REG_CONVDONE_IRQ_EN_MASK)
     {
         stk501xx_update_startup(stk);
+        pm_relax(&stk_wrapper->i2c_mgr.client->dev);
         return ;
     }
 
@@ -2252,6 +2300,7 @@ void stk_work_queue(void *stkdata)
             stk_reg_init(stk);
             stk501xx_set_enable(stk, true);
         }
+        pm_relax(&stk_wrapper->i2c_mgr.client->dev);
         return;
     }
 
@@ -2274,6 +2323,7 @@ void stk_work_queue(void *stkdata)
     {
         STK501XX_SAR_REPORT(stk);
     }
+    pm_relax(&stk_wrapper->i2c_mgr.client->dev);
 }
 #endif /* defined STK_INTERRUPT_MODE || defined STK_POLLING_MODE */
 int32_t stk501xx_init_client(struct stk_data * stk)
@@ -2491,6 +2541,7 @@ static ssize_t class_stk_value_show_ch3(struct class *class,
     STK_ERR("CH3_background_cap=%d;CH3_refer_channel_cap=%d;CH3_diff=%d;\n",ch3_cadc, ch3_ref_cadc, ch3_diff);
     return scnprintf(buf, PAGE_SIZE, "CH3_background_cap=%d;CH3_refer_channel_cap=%d;CH3_diff=%d;\n", ch3_cadc, ch3_ref_cadc, ch3_diff);
 }
+/*
 static ssize_t stk_enable_store_power_enable(struct stk501xx_wrapper *stk_wrapper, uint8_t count, uint32_t en)
 {
     stk_data *stk = &stk_wrapper->stk;
@@ -2533,14 +2584,14 @@ static ssize_t stk_enable_store_power_enable(struct stk501xx_wrapper *stk_wrappe
     stk_clr_intr(stk, &val);
     return 0;
 }
-
+*/
 static ssize_t class_stk_power_en(struct class *class,
         struct class_attribute *attr, const char *buf, size_t count)
 {
     unsigned int en;
-    uint8_t i = 0;
+    //uint8_t i = 0;
     int error;
-    stk501xx_wrapper *stk_wrapper = container_of(global_stk, stk501xx_wrapper, stk);
+    //stk501xx_wrapper *stk_wrapper = container_of(global_stk, stk501xx_wrapper, stk);
     error = kstrtouint(buf, 10, &en);
     if (error)
     {
@@ -2550,20 +2601,10 @@ static ssize_t class_stk_power_en(struct class *class,
     if ((1 == en) )
     {
         //stk501xx_set_enable(global_stk, en);
-        for (i = 0; i < ch_num; i ++)
-        {
-            stk_enable_store_power_enable(stk_wrapper, i, en);
-        }
-
         global_stk->power_en = en;
         STK_ERR("class_stk_power_en, en=%d", global_stk->power_en);
-        if(en)
         stk_force_report_data(global_stk, SAR_STATE_FAR);
     } else if (0 == en) {
-        for (i = 0; i < ch_num; i ++)
-        {
-            stk_enable_store_power_enable(stk_wrapper, i, en);
-        }
         global_stk->power_en = en;
         STK_ERR("class_stk_power_en, en=%d", global_stk->power_en);
     }
@@ -2729,7 +2770,9 @@ static ssize_t stk_channel_en_store(struct class *class,
         global_stk->state_change[mapping_phase[ch_idx]] = 1;       //force update
         global_stk->ch_status[ch_idx] = SAR_STATE_FAR;
 #if SAR_IN_FRANCE
-        global_stk->ch_status[ch_idx] = SAR_STATE_FAR;
+        if(is_anfr == true){
+            global_stk->ch_status[ch_idx] = SAR_STATE_FAR;
+        }
 #endif
 #ifdef STK_POLLING_MODE
         STK_TIMER_START(global_stk, &global_stk->stk_timer_info);
@@ -2913,7 +2956,9 @@ static ssize_t stk_enable_store(struct device *dev,
                 stk->state_change[mapping_phase[i]] = 1;       //force update
                 stk->ch_status[i] = SAR_STATE_FAR;
 #if SAR_IN_FRANCE
-                stk->ch_status[i] = SAR_STATE_FAR;
+                if(is_anfr == true){
+                    stk->ch_status[i] = SAR_STATE_FAR;
+                }
 #endif
 
 #ifdef STK_POLLING_MODE
@@ -3429,7 +3474,7 @@ void stk_report_sar_data(struct stk_data* stk)
     int32_t i = 0;
     uint8_t is_change = 0;
     uint8_t nf_flag = SAR_STATE_FAR;
-#if SAR_IN_FRANCE
+#ifdef SAR_IN_FRANCE
     int32_t ch0_result = 0;
     int32_t ch1_result = 0;
     int32_t ch2_result = 0;
@@ -3443,21 +3488,23 @@ void stk_report_sar_data(struct stk_data* stk)
     }
 
 #if SAR_IN_FRANCE
-    if(stk->sar_first_boot)
-    {
-        STK_ERR("stk->interrupt_cnt=%d\n",stk->interrupt_cnt);
+    if(is_anfr == true){
+        if(stk->sar_first_boot)
+        {
+            STK_ERR("stk->interrupt_cnt=%d\n",stk->interrupt_cnt);
 
-        ch0_result = stk501xx_read_offset_fadc(stk, 0);
-        ch1_result = stk501xx_read_offset_fadc(stk, 1);
-        ch2_result = stk501xx_read_offset_fadc(stk, 2);
-        ch3_result = stk501xx_read_offset_fadc(stk, 3);
-        //debug
-        STK_ERR("ch0_result: %d\n", ch0_result);
-        STK_ERR("ch1_result: %d\n", ch1_result);
-        STK_ERR("ch2_result: %d\n", ch2_result);
-        STK_ERR("ch3_result: %d\n", ch3_result);
-        STK_ERR("stk->cadc_weight =%d\n", stk->cadc_weight);
-//endof debug
+            ch0_result = stk501xx_read_offset_fadc(stk, 0);
+            ch1_result = stk501xx_read_offset_fadc(stk, 1);
+            ch2_result = stk501xx_read_offset_fadc(stk, 2);
+            ch3_result = stk501xx_read_offset_fadc(stk, 3);
+            //debug
+            STK_ERR("ch0_result: %d\n", ch0_result);
+            STK_ERR("ch1_result: %d\n", ch1_result);
+            STK_ERR("ch2_result: %d\n", ch2_result);
+            STK_ERR("ch3_result: %d\n", ch3_result);
+            STK_ERR("stk->cadc_weight =%d\n", stk->cadc_weight);
+            //endof debug
+        }
     }
 #endif
     STK_ERR("stk_report_sar_data:: change ph[5] =%d, ph[6] =%d", stk->state_change[5], stk->state_change[6]);
@@ -3469,76 +3516,83 @@ void stk_report_sar_data(struct stk_data* stk)
             is_change = 1;
             stk->grip_status[0] = SAR_STATE_NEAR;
             STK_ERR("stk->grip_status = %d", stk->grip_status[0]);
-            STK_ERR("ch%d : %s report_sar_status %d !\n", 0, &stk_sensord_dev[0].name, nf_flag);
+            //STK_ERR("ch%d : %s report_sar_status %d !\n", 0, &stk_sensord_dev[0].name, nf_flag);
         } else if(((STK_SAR_FAR_AWAY == stk->last_nearby[5]) && (STK_SAR_FAR_AWAY == stk->last_nearby[6])) && (stk->grip_status[0] != SAR_STATE_FAR)) {
             nf_flag = SAR_STATE_FAR;
             is_change = 1;
             stk->grip_status[0] = SAR_STATE_FAR;
             STK_ERR("stk->grip_status = %d", stk->grip_status[0]);
-            STK_ERR("ch%d : %s report_sar_status %d !\n", 0, &stk_sensord_dev[0].name, nf_flag);
+            //STK_ERR("ch%d : %s report_sar_status %d !\n", 0, &stk_sensord_dev[0].name, nf_flag);
         } else {
             is_change = 0;
-            STK_ERR("ch0 : %s report_sar_status error!\n", &stk_sensord_dev[0].name);
+            //STK_ERR("ch0 : %s report_sar_status error!\n", &stk_sensord_dev[0].name);
         }
 #if SAR_IN_FRANCE
-        stk->ch_status[0] = stk->ch_status[1] = nf_flag;
+        if(is_anfr == true){
+            stk->ch_status[0] = stk->ch_status[1] = nf_flag;
+        }
 #endif
         STK_ERR("class_stk_power_en, en=%d", global_stk->power_en);
         if (is_change != 0 && global_stk->power_en == 0)
         {
             // with ss sensor hal
             wake_lock_timeout(&stk501xx_wake_lock, HZ * 1);
-#if SAR_IN_FRANCE
-            if (stk->sar_first_boot)
-            {
-                stk->interrupt_cnt++ ;
-                if(stk->ch_status[0] == SAR_STATE_FAR && (stk->interrupt_cnt >=18)) //Ready to cali near statues
+#ifdef SAR_IN_FRANCE
+            if(is_anfr == true){
+                if (stk->sar_first_boot)
                 {
-                    stk501xx_phase_reset(stk, STK_TRIGGER_REG_INIT_ALL);
+                    stk->interrupt_cnt++ ;
+                    if(stk->ch_status[0] == SAR_STATE_FAR && (stk->interrupt_cnt >=18)) //Ready to cali near statues
+                    {
+                        stk501xx_phase_reset(stk, STK_TRIGGER_REG_INIT_ALL);
+                    }
                 }
-            }
-            if (stk->sar_first_boot && (stk->interrupt_cnt < MAX_INT_COUNT) && \
-                ((ch0_result - stk->sar_first_fadc[0]) >= CH0_FADC_DIFF) &&   \
-                ((ch1_result - stk->sar_first_fadc[1]) >= CH1_FADC_DIFF) &&   \
-                ((ch2_result - stk->sar_first_fadc[2]) >= CH2_FADC_DIFF) &&   \
-                ((ch3_result - stk->sar_first_fadc[3]) >= CH3_FADC_DIFF))
-            {
-                STK_ERR("stk->interrupt_cnt=%d\n" ,stk->interrupt_cnt);
-                input_report_rel(stk_wrapper->channels[0].input_dev, REL_MISC, 1);
-                input_report_rel(stk_wrapper->channels[0].input_dev, REL_X, 1);
-                input_sync(stk_wrapper->channels[0].input_dev);
-            }
-            else // first_boot false or int num more than 20 or floating
-            {
-                if(stk->sar_first_boot)
+                if (stk->sar_first_boot && (stk->interrupt_cnt < MAX_INT_COUNT) && \
+                    ((ch0_result - stk->sar_first_fadc[0]) >= CH0_FADC_DIFF) &&   \
+                    ((ch1_result - stk->sar_first_fadc[1]) >= CH1_FADC_DIFF) &&   \
+                    ((ch2_result - stk->sar_first_fadc[2]) >= CH2_FADC_DIFF) &&   \
+                    ((ch3_result - stk->sar_first_fadc[3]) >= CH3_FADC_DIFF))
                 {
-                    STK_ERR("exit force input near mode!!!\n");
-//debug
                     STK_ERR("stk->interrupt_cnt=%d\n" ,stk->interrupt_cnt);
-                    STK_ERR("ch0_result: %d\n", ch0_result);
-                    STK_ERR("ch1_result: %d\n", ch1_result);
-                    STK_ERR("ch2_result: %d\n", ch2_result);
-                    STK_ERR("ch3_result: %d\n", ch3_result);
-                    STK_ERR("ch0_result_1st: %d\n", stk->sar_first_fadc[0]);
-                    STK_ERR("ch1_result_1st: %d\n", stk->sar_first_fadc[1]);
-                    STK_ERR("ch2_result_1st: %d\n", stk->sar_first_fadc[2]);
-                    STK_ERR("ch3_result_1st: %d\n", stk->sar_first_fadc[3]);
-                    STK_ERR("ch0_result_diff: %d\n", ch0_result - stk->sar_first_fadc[0]);
-                    STK_ERR("ch1_result_diff: %d\n", ch1_result - stk->sar_first_fadc[1]);
-                    STK_ERR("ch2_result_diff: %d\n", ch2_result - stk->sar_first_fadc[2]);
-                    STK_ERR("ch3_result_diff: %d\n", ch3_result - stk->sar_first_fadc[3]);
-//endof debug
-                    stk->sar_first_boot = false;
-                    stk501xx_phase_reset(stk, STK_TRIGGER_REG_INIT_ALL);
-
+                    input_report_rel(stk_wrapper->channels[0].input_dev, REL_MISC, 1);
+                    input_report_rel(stk_wrapper->channels[0].input_dev, REL_X, 1);
+                    input_sync(stk_wrapper->channels[0].input_dev);
                 }
-#endif
-            STK_ERR("exit force input near mode!!!, SAR stk->interrupt_cnt=%d\n" ,stk->interrupt_cnt);
-            input_report_rel(stk_wrapper->channels[0].input_dev, REL_MISC, nf_flag);
-            input_report_rel(stk_wrapper->channels[0].input_dev, REL_X, 2);
-//            input_report_abs(stk_wrapper->channels[0].input_dev, ABS_DISTANCE, nf_flag);
-            input_sync(stk_wrapper->channels[0].input_dev);
-#if SAR_IN_FRANCE
+                else  // first_boot false or int num more than 20 or floating
+                {
+                    if(stk->sar_first_boot)
+                    {
+                        STK_ERR("exit force input near mode!!!\n");
+                        //debug
+                        STK_ERR("stk->interrupt_cnt=%d\n" ,stk->interrupt_cnt);
+                        STK_ERR("ch0_result: %d\n", ch0_result);
+                        STK_ERR("ch1_result: %d\n", ch1_result);
+                        STK_ERR("ch2_result: %d\n", ch2_result);
+                        STK_ERR("ch3_result: %d\n", ch3_result);
+                        STK_ERR("ch0_result_1st: %d\n", stk->sar_first_fadc[0]);
+                        STK_ERR("ch1_result_1st: %d\n", stk->sar_first_fadc[1]);
+                        STK_ERR("ch2_result_1st: %d\n", stk->sar_first_fadc[2]);
+                        STK_ERR("ch3_result_1st: %d\n", stk->sar_first_fadc[3]);
+                        STK_ERR("ch0_result_diff: %d\n", ch0_result - stk->sar_first_fadc[0]);
+                        STK_ERR("ch1_result_diff: %d\n", ch1_result - stk->sar_first_fadc[1]);
+                        STK_ERR("ch2_result_diff: %d\n", ch2_result - stk->sar_first_fadc[2]);
+                        STK_ERR("ch3_result_diff: %d\n", ch3_result - stk->sar_first_fadc[3]);
+                        //endof debug
+                        stk->sar_first_boot = false;
+                        stk501xx_phase_reset(stk, STK_TRIGGER_REG_INIT_ALL);
+                    }
+                    STK_ERR("exit force input near mode!!!, SAR stk->interrupt_cnt=%d\n" ,stk->interrupt_cnt);
+                    input_report_rel(stk_wrapper->channels[0].input_dev, REL_MISC, nf_flag);
+                    input_report_rel(stk_wrapper->channels[0].input_dev, REL_X, 2);
+                    input_sync(stk_wrapper->channels[0].input_dev);
+                    STK_ERR("ch%d : %s report_sar_status %d !\n", i, &stk_sensord_dev[i].name, nf_flag);
+                }
+            } else {
+                STK_ERR(" input mode!!!, SAR stk->interrupt_cnt=%d\n" ,stk->interrupt_cnt);
+                input_report_rel(stk_wrapper->channels[0].input_dev, REL_MISC, nf_flag);
+                input_report_rel(stk_wrapper->channels[0].input_dev, REL_X, 2);
+                input_sync(stk_wrapper->channels[0].input_dev);
+                STK_ERR("ch%d : %s report_sar_status %d !\n", i, &stk_sensord_dev[i].name, nf_flag);
             }
 #endif
         }
@@ -3554,72 +3608,85 @@ void stk_report_sar_data(struct stk_data* stk)
             if ((STK_SAR_NEAR_BY == stk->last_nearby[mapping_phase[i]]) && (stk->grip_status[i] != SAR_STATE_NEAR)) {
                 nf_flag = SAR_STATE_NEAR;
                 stk->grip_status[i] = SAR_STATE_NEAR;
-                STK_ERR("ch%d : %s report_sar_status %d !\n", i, &stk_sensord_dev[i].name, nf_flag);
+                //STK_ERR("ch%d : %s report_sar_status %d !\n", i, &stk_sensord_dev[i].name, nf_flag);
             } else if ((STK_SAR_FAR_AWAY == stk->last_nearby[mapping_phase[i]]) && (stk->grip_status[i] != SAR_STATE_FAR)) {
                 nf_flag = SAR_STATE_FAR;
                 stk->grip_status[i] = SAR_STATE_FAR;
-                STK_ERR("ch%d : %s report_sar_status %d !\n", i, &stk_sensord_dev[i].name, nf_flag);
+                //STK_ERR("ch%d : %s report_sar_status %d !\n", i, &stk_sensord_dev[i].name, nf_flag);
             } else {
-                STK_ERR("ch%d : %s report_sar_status error!\n", i,  &stk_sensord_dev[i].name);
+                //STK_ERR("ch%d : %s report_sar_status error!\n", i,  &stk_sensord_dev[i].name);
                 is_change = 0;
             }
 #if SAR_IN_FRANCE
-            stk->ch_status[i] = nf_flag;
+            if(is_anfr == true){
+                stk->ch_status[i] = nf_flag;
+            }
 #endif
             STK_ERR("class_stk_power_en, en=%d", global_stk->power_en);
             if (is_change != 0 && global_stk->power_en == 0)
             {
                 /*with ss sensor hal*/
                 wake_lock_timeout(&stk501xx_wake_lock, HZ * 1);
-#if SAR_IN_FRANCE
-                if (stk->sar_first_boot)
+
+#ifdef SAR_IN_FRANCE
+                if(is_anfr == true)
                 {
-                    stk->interrupt_cnt++ ;
-                    if(stk->ch_status[i] == SAR_STATE_FAR && (stk->interrupt_cnt >=18)) //Ready to cali near statues
+                    if (stk->sar_first_boot)
                     {
-                        stk501xx_phase_reset(stk, STK_TRIGGER_REG_INIT_ALL);
+                        stk->interrupt_cnt++ ;
+                        if(stk->ch_status[i] == SAR_STATE_FAR && (stk->interrupt_cnt >=18)) //Ready to cali near statues
+                        {
+                            stk501xx_phase_reset(stk, STK_TRIGGER_REG_INIT_ALL);
+                        }
                     }
-                }
-                if (stk->sar_first_boot && (stk->interrupt_cnt < MAX_INT_COUNT) && \
-                    ((ch0_result - stk->sar_first_fadc[0]) >= CH0_FADC_DIFF) &&   \
-                    ((ch1_result - stk->sar_first_fadc[1]) >= CH1_FADC_DIFF) &&   \
-                    ((ch2_result - stk->sar_first_fadc[2]) >= CH2_FADC_DIFF) &&   \
-                    ((ch3_result - stk->sar_first_fadc[3]) >= CH3_FADC_DIFF))
-                {
-                     STK_ERR("stk->interrupt_cnt=%d\n" ,stk->interrupt_cnt);
-                    input_report_rel(stk_wrapper->channels[i].input_dev, REL_MISC, 1);
-                    input_report_rel(stk_wrapper->channels[i].input_dev, REL_X, 1);
-                    input_sync(stk_wrapper->channels[i].input_dev);
-                }
-                else // first_boot false or int num more than 20 or floating
-                {
-                    if(stk->sar_first_boot)
+                    if (stk->sar_first_boot && (stk->interrupt_cnt < MAX_INT_COUNT) && \
+                        ((ch0_result - stk->sar_first_fadc[0]) >= CH0_FADC_DIFF) &&   \
+                        ((ch1_result - stk->sar_first_fadc[1]) >= CH1_FADC_DIFF) &&   \
+                        ((ch2_result - stk->sar_first_fadc[2]) >= CH2_FADC_DIFF) &&   \
+                        ((ch3_result - stk->sar_first_fadc[3]) >= CH3_FADC_DIFF))
                     {
+                        STK_ERR("stk->interrupt_cnt=%d\n" ,stk->interrupt_cnt);
+                        input_report_rel(stk_wrapper->channels[i].input_dev, REL_MISC, 1);
+                        input_report_rel(stk_wrapper->channels[i].input_dev, REL_X, 1);
+                        input_sync(stk_wrapper->channels[i].input_dev);
+                    }
+                    else // first_boot false or int num more than 20 or floating
+                    {
+                        if(stk->sar_first_boot)
+                        {
+                            STK_ERR("exit force input near mode!!!, SAR stk->interrupt_cnt=%d\n" ,stk->interrupt_cnt);
+                            //debug
+                            STK_ERR("ch0_result: %d\n", ch0_result);
+                            STK_ERR("ch1_result: %d\n", ch1_result);
+                            STK_ERR("ch2_result: %d\n", ch2_result);
+                            STK_ERR("ch3_result: %d\n", ch3_result);
+                            STK_ERR("ch0_result_1st: %d\n", stk->sar_first_fadc[0]);
+                            STK_ERR("ch1_result_1st: %d\n", stk->sar_first_fadc[1]);
+                            STK_ERR("ch2_result_1st: %d\n", stk->sar_first_fadc[2]);
+                            STK_ERR("ch3_result_1st: %d\n", stk->sar_first_fadc[2]);
+                            STK_ERR("ch0_result_diff: %d\n", ch0_result - stk->sar_first_fadc[0]);
+                            STK_ERR("ch1_result_diff: %d\n", ch1_result - stk->sar_first_fadc[1]);
+                            STK_ERR("ch2_result_diff: %d\n", ch2_result - stk->sar_first_fadc[2]);
+                            STK_ERR("ch3_result_diff: %d\n", ch3_result - stk->sar_first_fadc[3]);
+                            //endof debug
+                            stk->sar_first_boot = false;
+                            stk501xx_phase_reset(stk, STK_TRIGGER_REG_INIT_ALL);
+                        }
                         STK_ERR("exit force input near mode!!!, SAR stk->interrupt_cnt=%d\n" ,stk->interrupt_cnt);
-//debug
-                        STK_ERR("ch0_result: %d\n", ch0_result);
-                        STK_ERR("ch1_result: %d\n", ch1_result);
-                        STK_ERR("ch2_result: %d\n", ch2_result);
-                        STK_ERR("ch3_result: %d\n", ch3_result);
-                        STK_ERR("ch0_result_1st: %d\n", stk->sar_first_fadc[0]);
-                        STK_ERR("ch1_result_1st: %d\n", stk->sar_first_fadc[1]);
-                        STK_ERR("ch2_result_1st: %d\n", stk->sar_first_fadc[2]);
-                        STK_ERR("ch3_result_1st: %d\n", stk->sar_first_fadc[2]);
-                        STK_ERR("ch0_result_diff: %d\n", ch0_result - stk->sar_first_fadc[0]);
-                        STK_ERR("ch1_result_diff: %d\n", ch1_result - stk->sar_first_fadc[1]);
-                        STK_ERR("ch2_result_diff: %d\n", ch2_result - stk->sar_first_fadc[2]);
-                        STK_ERR("ch3_result_diff: %d\n", ch3_result - stk->sar_first_fadc[3]);
-//endof debug
-                        stk->sar_first_boot = false;
-                        stk501xx_phase_reset(stk, STK_TRIGGER_REG_INIT_ALL);
+                        input_report_rel(stk_wrapper->channels[i].input_dev, REL_MISC, nf_flag);
+                        input_report_rel(stk_wrapper->channels[i].input_dev, REL_X, 2);
+                        //input_report_abs(stk_wrapper->channels[i].input_dev, ABS_DISTANCE, nf_flag);
+                        input_sync(stk_wrapper->channels[i].input_dev);
+                        STK_ERR("ch%d : %s report_sar_status %d !\n", i, &stk_sensord_dev[i].name, nf_flag);
                     }
-#endif
-                STK_ERR("exit force input near mode!!!, SAR stk->interrupt_cnt=%d\n" ,stk->interrupt_cnt);
-                input_report_rel(stk_wrapper->channels[i].input_dev, REL_MISC, nf_flag);
-                input_report_rel(stk_wrapper->channels[i].input_dev, REL_X, 2);
-//                input_report_abs(stk_wrapper->channels[i].input_dev, ABS_DISTANCE, nf_flag);
-                input_sync(stk_wrapper->channels[i].input_dev);
-#if SAR_IN_FRANCE
+                } else {
+                    STK_ERR("111!\n");
+                    STK_ERR("exit force input near mode!!!, SAR stk->interrupt_cnt=%d\n" ,stk->interrupt_cnt);
+                    input_report_rel(stk_wrapper->channels[i].input_dev, REL_MISC, nf_flag);
+                    input_report_rel(stk_wrapper->channels[i].input_dev, REL_X, 2);
+                    //input_report_abs(stk_wrapper->channels[i].input_dev, ABS_DISTANCE, nf_flag);
+                    input_sync(stk_wrapper->channels[i].input_dev);
+                    STK_ERR("ch%d : %s report_sar_status %d !\n", i, &stk_sensord_dev[i].name, nf_flag);
                 }
 #endif
             }
@@ -3695,7 +3762,13 @@ int32_t stk_i2c_probe(struct i2c_client *client, struct common_function *common_
         STK_ERR("failed to allocate stk3a8x_data");
         return -ENOMEM;
     }
-
+#if SAR_IN_FRANCE
+    err = is_anfr_board();
+    if(err == 1 ){
+        is_anfr = true;
+    }
+    STK_LOG("is_anfr = %d", is_anfr);
+#endif
     gStk = stk;
     stk_wrapper->i2c_mgr.client = client;
     stk_wrapper->i2c_mgr.addr_type = ADDR_16BIT;
@@ -3703,7 +3776,9 @@ int32_t stk_i2c_probe(struct i2c_client *client, struct common_function *common_
     stk->tops   = common_fn->tops;
     stk->gops   = common_fn->gops;
 #if SAR_IN_FRANCE
-    stk->ch_status[0] = stk->ch_status[1] = stk->ch_status[2] = stk->ch_status[3] = STK_SAR_FAR_AWAY;
+    if(is_anfr == true){
+        stk->ch_status[0] = stk->ch_status[1] = stk->ch_status[2] = stk->ch_status[3] = STK_SAR_FAR_AWAY;
+    }
 #endif
     stk->sar_report_cb = stk_report_sar_data;
     i2c_set_clientdata(client, stk_wrapper);
@@ -3716,8 +3791,10 @@ int32_t stk_i2c_probe(struct i2c_client *client, struct common_function *common_
     }
 
 #if SAR_IN_FRANCE
-    stk->sar_first_boot = true;
-    stk->user_test = 0;
+    if(is_anfr == true){
+        stk->sar_first_boot = true;
+        stk->user_test = 0;
+    }
 #endif
     stk501xx_parse_dt(stk, &client->dev);
     err = stk501xx_init_client(stk);
@@ -3780,7 +3857,12 @@ int32_t stk_i2c_remove(struct i2c_client *client)
 
 int32_t stk501xx_suspend(struct device* dev)
 {
+    int ret;
+    stk501xx_wrapper *stk_wrapper = dev_get_drvdata(dev);
+    stk_data *stk = &stk_wrapper->stk;
 
+    ret = enable_irq_wake(stk->gpio_info.irq);
+    STK_LOG("enable_irq_wake ret =%d", ret);
     stk501xx_irq_from_suspend_flag = 1;
 
     return 0;
@@ -3788,7 +3870,12 @@ int32_t stk501xx_suspend(struct device* dev)
 
 int32_t stk501xx_resume(struct device* dev)
 {
+    int ret;
+    stk501xx_wrapper *stk_wrapper = dev_get_drvdata(dev);
+    stk_data *stk = &stk_wrapper->stk;
 
+    ret = disable_irq_wake(stk->gpio_info.irq);
+    STK_LOG("enable_irq_wake ret =%d", ret);
     stk501xx_irq_from_suspend_flag = 0;
     return 0;
 }

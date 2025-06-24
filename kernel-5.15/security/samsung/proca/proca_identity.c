@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
  * PROCA identity
  *
@@ -15,11 +16,13 @@
  * GNU General Public License for more details.
  */
 
-#include "proca_identity.h"
-#include "proca_certificate.h"
 #include <linux/slab.h>
 #include <linux/fs.h>
 #include <linux/string.h>
+
+#include "proca_identity.h"
+#include "proca_certificate.h"
+#include "proca_log.h"
 
 int init_proca_identity(struct proca_identity *identity, struct file *file,
 			char **cert_value, const size_t cert_size,
@@ -52,7 +55,7 @@ int proca_identity_copy(struct proca_identity *dst, struct proca_identity *src)
 {
 	int rc = 0;
 
-	BUG_ON(!dst || !src);
+	PROCA_BUG_ON(!dst || !src);
 
 	memset(dst, 0, sizeof(*dst));
 

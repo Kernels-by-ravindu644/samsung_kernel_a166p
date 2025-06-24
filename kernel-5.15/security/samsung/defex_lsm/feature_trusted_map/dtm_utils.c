@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
  * Copyright (c) 2020-2022 Samsung Electronics Co., Ltd. All Rights Reserved
  *
@@ -16,11 +17,11 @@
 #include <linux/path.h>
 #include <linux/sched.h>
 #include <linux/slab.h>
-#include <linux/stat.h>
 #include <linux/uidgid.h>
 #include <linux/version.h>
+#include "include/defex_config.h"
 
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 11, 0)
+#if KERNEL_VER_GTE(4, 11, 0)
 #include <linux/sched/mm.h>
 #endif
 
@@ -32,7 +33,7 @@ const char * const DTM_UNKNOWN = "<unknown>";
 
 static inline int dtm_get_file_attr(struct path *path, struct kstat *stat)
 {
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 11, 0)
+#if KERNEL_VER_GTE(4, 11, 0)
 	return vfs_getattr(path, stat, STATX_BASIC_STATS, 0);
 #else
 	return vfs_getattr(path, stat);
@@ -91,6 +92,9 @@ int dtm_get_fd_mode_bit(int fd)
 	if (fd < 0)
 		return DTM_FD_MODE_ERROR;
 
+#ifdef DTM_MOCK
+	return DTM_FD_MODE_CHR;
+#else
 	sf = fdget_raw(fd);
 	if (unlikely(!sf.file))
 		return DTM_FD_MODE_CLOSED;
@@ -101,6 +105,7 @@ int dtm_get_fd_mode_bit(int fd)
 		return DTM_FD_MODE_ERROR;
 
 	return dtm_get_stat_mode_bit(&stat);
+#endif
 }
 
 /*

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
  * This code is based on IMA's code
  *
@@ -40,7 +41,6 @@
 #include "five_porting.h"
 #include "five_cache.h"
 #include "five_dmverity.h"
-#include "five_dsms.h"
 #include "five_tint_dev.h"
 
 static const bool unlink_on_error;	// false
@@ -244,14 +244,13 @@ const char *five_d_path(const struct path *path, char **pathbuf, char *namebuf)
 			__putname(*pathbuf);
 			*pathbuf = NULL;
 			pathname = NULL;
-		}
-		else {
+		} else {
 			fix_dpath(path, *pathbuf, pathname);
 		}
 	}
 
 	if (!pathname) {
-		strlcpy(namebuf, path->dentry->d_name.name, NAME_MAX);
+		strscpy(namebuf, path->dentry->d_name.name, NAME_MAX);
 		pathname = namebuf;
 	}
 
@@ -656,9 +655,6 @@ static void process_measurement(const struct processing_event_list *params)
 	file_verification_result_deinit(&file_result);
 }
 
-#define MFD_NAME_PREFIX "memfd:"
-#define MFD_NAME_PREFIX_LEN (sizeof(MFD_NAME_PREFIX) - 1)
-
 static bool is_memfd_file(struct file *file)
 {
 	struct inode *inode;
@@ -670,10 +666,7 @@ static bool is_memfd_file(struct file *file)
 	memfd_inode = file_inode(memfd_file);
 	inode = file_inode(file);
 	if (inode && memfd_inode && inode->i_sb == memfd_inode->i_sb)
-		if (file->f_path.dentry &&
-			!strncmp(file->f_path.dentry->d_iname, MFD_NAME_PREFIX,
-							MFD_NAME_PREFIX_LEN))
-			return true;
+		return true;
 
 	return false;
 }
@@ -924,8 +917,6 @@ static int __init init_five(void)
 	if (error)
 		return error;
 
-	five_dsms_init("1", 0);
-
 	error = five_init_dmverity();
 	if (error)
 		return error;
@@ -965,6 +956,8 @@ struct bprm_hook_context {
 	struct work_struct data_work;
 	struct task_struct *task;
 	struct task_struct *child_task;
+	enum task_integrity_value parent_tint_value;
+	enum task_integrity_value child_tint_value;
 };
 
 static void bprm_hook_handler(struct work_struct *in_data)
@@ -975,7 +968,9 @@ static void bprm_hook_handler(struct work_struct *in_data)
 	if (unlikely(!context))
 		return;
 
-	five_hook_task_forked(context->task, context->child_task);
+	five_hook_task_forked(context->task, context->child_task,
+						  context->parent_tint_value,
+						  context->child_tint_value);
 
 	put_task_struct(context->task);
 	put_task_struct(context->child_task);
@@ -1048,6 +1043,10 @@ int five_fork(struct task_struct *task, struct task_struct *child_task)
 
 	get_task_struct(task);
 	get_task_struct(child_task);
+	context->parent_tint_value =
+		task_integrity_read(TASK_INTEGRITY(task));
+	context->child_tint_value =
+		task_integrity_read(TASK_INTEGRITY(child_task));
 	context->task = task;
 	context->child_task = child_task;
 	INIT_WORK(&context->data_work, bprm_hook_handler);

@@ -3329,6 +3329,8 @@ static int mtk_charger_plug_out(struct mtk_charger *info)
 /* +P240826-00022 liangjianfeng wt, modify, 20240827, modi RESET_System_Server_watchdog*/
 	info->is_chg_done = false;
 /* -P240826-00022 liangjianfeng wt, modify, 20240827, modi RESET_System_Server_watchdog*/
+	info->is_soc_100_in_charging = false;
+	info->is_basic_discharge = false;
 
 	pdata1->disable_charging_count = 0;
 	pdata1->input_current_limit_by_aicl = -1;
@@ -3618,12 +3620,18 @@ static void ato_charger_limit_soc(struct mtk_charger *info, int min, int max)
 	if ((limit_soc >= max) && (info->disable_charger == false)) {
 		charger_dev_enable_hz(info->chg1_dev, 1);
 		_mtk_enable_charging(info, 0);
+		if (info->psy1 != NULL) {
+			power_supply_changed(info->psy1);
+		}
 		chr_err("ato_charger_limit_soc:disable charging\n");
 	}
 
     if ((limit_soc <= min) && info->disable_charger && (batt_slate_mode == 0)) {
 		charger_dev_enable_hz(info->chg1_dev, 0);
 		_mtk_enable_charging(info, 1);
+		if (info->psy1 != NULL) {
+			power_supply_changed(info->psy1);
+		}
 		chr_err("ato_charger_limit_soc:enable charging\n");
 	}
 }
@@ -3638,16 +3646,124 @@ EXPORT_SYMBOL_GPL(usb_notifier_call_chain_for_tp);
 //-S98901AA1,caoxin2.wt,modify,2024/06/28,add charger mode
 
 #if defined (ONEUI_6P1_CHG_PROTECION_ENABLE)
+int wt_batt_full_capacity_check_for_cp(void)
+{
+	int uisoc = 0;
+	bool is_charger_on = false;
+	int batt_full_capacity = 100;
+	int batt_mode = 0;
+	struct power_supply *chg_psy = NULL;
+	struct mtk_charger *info = NULL;
+
+	chg_psy = power_supply_get_by_name("mtk-master-charger");
+	if (chg_psy == NULL || IS_ERR(chg_psy)) {
+		chr_err("%s Couldn't get chg_psy\n", __func__);
+		return -EINVAL;
+	}
+	info = (struct mtk_charger *)power_supply_get_drvdata(chg_psy);
+	if (info == NULL){
+		chr_err("%s Couldn't getdrvdata\n", __func__);
+		return -EINVAL;
+	}
+
+	batt_mode = info->batt_full_capacity;
+	if ((batt_mode == POWER_SUPPLY_CAPACITY_85_OPTION)
+		|| (batt_mode == POWER_SUPPLY_CAPACITY_85_OFFCHARGING)) {
+		batt_full_capacity = 85;
+	} else if ((batt_mode == POWER_SUPPLY_CAPACITY_90_OPTION)
+		|| (batt_mode == POWER_SUPPLY_CAPACITY_90_OFFCHARGING)) {
+		batt_full_capacity = 90;
+	} else if ((batt_mode == POWER_SUPPLY_CAPACITY_95_OPTION)
+		|| (batt_mode == POWER_SUPPLY_CAPACITY_95_OFFCHARGING)) {
+		batt_full_capacity = 95;
+	} else if (batt_mode > POWER_SUPPLY_CAPACITY_100) {
+		batt_full_capacity = 80;
+	}
+
+	uisoc = get_uisoc(info);
+	is_charger_on = mtk_is_charger_on(info);
+	chr_err("batt_full_capacity %d,%d,%d\n",is_charger_on,uisoc,batt_full_capacity);
+	if (batt_full_capacity != 100) {
+		if ((uisoc >= batt_full_capacity)
+			&& (is_charger_on == true)) {
+			chr_err("%s disable charging\n", __func__);
+			return -1;
+		}
+		return 0;
+	}
+	return 0;
+}
+EXPORT_SYMBOL_GPL(wt_batt_full_capacity_check_for_cp);
+
+bool is_batt_full_capacity(void)
+{
+	int uisoc = 0;
+	int batt_full_capacity = 100;
+	int batt_mode = 0;
+	struct power_supply *chg_psy = NULL;
+	struct mtk_charger *info = NULL;
+
+	chg_psy = power_supply_get_by_name("mtk-master-charger");
+	if (chg_psy == NULL || IS_ERR(chg_psy)) {
+		chr_err("%s Couldn't get chg_psy\n", __func__);
+		return false;
+	}
+	info = (struct mtk_charger *)power_supply_get_drvdata(chg_psy);
+	if (info == NULL){
+		chr_err("%s Couldn't getdrvdata\n", __func__);
+		return false;
+	}
+
+	batt_mode = info->batt_full_capacity;
+	if ((batt_mode == POWER_SUPPLY_CAPACITY_85_OPTION)
+		|| (batt_mode == POWER_SUPPLY_CAPACITY_85_OFFCHARGING)) {
+		batt_full_capacity = 85;
+	} else if ((batt_mode == POWER_SUPPLY_CAPACITY_90_OPTION)
+		|| (batt_mode == POWER_SUPPLY_CAPACITY_90_OFFCHARGING)) {
+		batt_full_capacity = 90;
+	} else if ((batt_mode == POWER_SUPPLY_CAPACITY_95_OPTION)
+		|| (batt_mode == POWER_SUPPLY_CAPACITY_95_OFFCHARGING)) {
+		batt_full_capacity = 95;
+	} else if (batt_mode > POWER_SUPPLY_CAPACITY_100) {
+		batt_full_capacity = 80;
+	}
+
+	uisoc = get_uisoc(info);
+	chr_err("%s: uisoc=%d\n", __func__, uisoc);
+	if (batt_full_capacity != 100) {
+		if ((uisoc >= batt_full_capacity)) {
+			chr_err("%s disable charging\n", __func__);
+			return true;
+		}
+		return false;
+	}
+	return false;
+}
+EXPORT_SYMBOL_GPL(is_batt_full_capacity);
+
 void wt_batt_full_capacity_check(struct mtk_charger *info)
 {
 	int uisoc = 0;
 	bool is_charger_on = false;
 	//struct switch_charging_alg_data *swchgalg = info->algorithm_data;
 	int batt_full_capacity = 100;
+	static int old_batt_full_capacity = 100;
 	int batt_mode = info->batt_full_capacity;
+	static int old_uisoc = 0;
+	int input_current_limit = USB_CHARGER_CURRENT;
 
-	if (batt_mode > 1)
+	if ((batt_mode == POWER_SUPPLY_CAPACITY_85_OPTION)
+		|| (batt_mode == POWER_SUPPLY_CAPACITY_85_OFFCHARGING)) {
+		batt_full_capacity = 85;
+	} else if ((batt_mode == POWER_SUPPLY_CAPACITY_90_OPTION)
+		|| (batt_mode == POWER_SUPPLY_CAPACITY_90_OFFCHARGING)) {
+		batt_full_capacity = 90;
+	} else if ((batt_mode == POWER_SUPPLY_CAPACITY_95_OPTION)
+		|| (batt_mode == POWER_SUPPLY_CAPACITY_95_OFFCHARGING)) {
+		batt_full_capacity = 95;
+	} else if (batt_mode > POWER_SUPPLY_CAPACITY_100) {
 		batt_full_capacity = 80;
+	}
 
 	uisoc = get_uisoc(info);
 	is_charger_on = mtk_is_charger_on(info);
@@ -3668,12 +3784,21 @@ void wt_batt_full_capacity_check(struct mtk_charger *info)
 
 			_mtk_enable_charging(info, 0);
 			atomic_set(&info->batt_full_discharge, 1);
+			if (info->chr_type == POWER_SUPPLY_TYPE_USB) {
+				input_current_limit = USB_CHARGER_CURRENT;
+			} else {
+				input_current_limit = CHARGING_PROTECT_INPUT_CURRENT;
+			}
+			charger_dev_set_input_current(info->chg1_dev, input_current_limit);
+
 			if (info->psy1 != NULL) {
 				power_supply_changed(info->psy1);
 			}
 			chr_err("batt_full_capacity_check:disable charging\n");
 		} else if (atomic_read(&info->batt_full_discharge)
-			&& (uisoc <= (batt_full_capacity - 3))
+			&& ((uisoc <= (batt_full_capacity - 2))
+			|| ((old_batt_full_capacity < batt_full_capacity)
+			&& (uisoc <= (batt_full_capacity - 1))))
 			&& (is_charger_on == true)
 			&& (info->sw_jeita.charging == true)) {
 			if(batt_mode == POWER_SUPPLY_CAPACITY_80_HIGHSOC)
@@ -3692,35 +3817,59 @@ void wt_batt_full_capacity_check(struct mtk_charger *info)
 			}
 			chr_err("batt_full_capacity_check:enable charging\n");
 		}
-	} else{
+	} else {
 	 	if ((is_charger_on == true) && (info->sw_jeita.charging == true) && (info->disable_charger == true) &&
 			(batt_slate_mode == 0) && (batt_store_mode == 0) && (batt_mode == POWER_SUPPLY_CAPACITY_100)
-			&& (!info->cmd_discharging)) {
+			&& (!info->cmd_discharging)
+			&& (atomic_read(&info->batt_full_discharge) || (info->is_basic_discharge
+			&& (info->batt_soc_rechg == 0)))) {
 			//liwei19@wt, modify 20240829, Resolve stop_charge not working
-				charger_dev_enable_hz(info->chg1_dev, 0);
-				_mtk_enable_charging(info, 1);
-				atomic_set(&info->batt_full_discharge, 0);
-				if (info->psy1 != NULL) {
-					power_supply_changed(info->psy1);
-				}
-				chr_err("FULL_CAP relieve 100!!!\n");
+			charger_dev_enable_hz(info->chg1_dev, 0);
+			_mtk_enable_charging(info, 1);
+			atomic_set(&info->batt_full_discharge, 0);
+			info->is_basic_discharge = false;
+			if (info->psy1 != NULL) {
+				power_supply_changed(info->psy1);
+			}
+			chr_err("FULL_CAP relieve 100!!!\n");
 		}
 	}
 
 	if ((info->batt_soc_rechg == 1) && (batt_mode == POWER_SUPPLY_CAPACITY_100) && (batt_full_capacity == 100)) {
-		if(info->is_chg_done && uisoc <= 95) {
-			charger_dev_enable_hz(info->chg1_dev, 1);
+		if ((old_uisoc == 100) && (uisoc == 99)
+			&& is_charger_on && info->is_soc_100_in_charging) {
+			_mtk_enable_charging(info, 0);
+			info->is_basic_discharge = true;
+		}
+
+		if ((uisoc <= 95)
+			&& (info->is_chg_done
+			|| info->is_soc_100_in_charging)) {
+			//charger_dev_enable_hz(info->chg1_dev, 1);
 			_mtk_enable_charging(info, 0);
 			info->is_chg_done = false;
-			mdelay(200);
+			mdelay(20);
 			charger_dev_enable_hz(info->chg1_dev, 0);
 			_mtk_enable_charging(info, 1);
+			mdelay(50);
+			info->is_soc_100_in_charging = false;
+			info->is_basic_discharge = false;
 			atomic_set(&info->batt_full_discharge, 0);
+			if (info->psy1 != NULL) {
+				power_supply_changed(info->psy1);
+			}
 		}
+
+		old_uisoc = uisoc;
+	} else {
+		old_uisoc = 0;
 	}
+	old_batt_full_capacity = batt_full_capacity;
 	//-P240803-01757, liwei19@wt, modify 20240807, Update notification after charging status change
 	chr_err("batt_soc_rechg = %d,batt_mode = %d,chg_done = %d,uisoc = %d\n",
-		info->batt_soc_rechg,batt_mode,info->is_chg_done,uisoc);
+		info->batt_soc_rechg, batt_mode, info->is_chg_done, uisoc);
+	chr_err("100_in_charging = %d,is_charger_on = %d, basic_discharge=%d\n",
+		info->is_soc_100_in_charging, is_charger_on, info->is_basic_discharge);
 }
 #endif
 
@@ -3843,7 +3992,7 @@ static int charger_routine_thread(void *arg)
 
 		if (is_charger_on && batt_store_mode) {
 			ato_charger_limit_soc(info, 60, 70);
-			charger_dev_set_charging_current(info->chg1_dev, 100000);
+			charger_dev_set_charging_current(info->chg1_dev, 500000);
 			chr_err("store_mode soc control, uisoc: %d\n", get_uisoc(info));
 		}
 		if (is_charger_on)
@@ -4912,6 +5061,8 @@ int hv_disable_set_property(struct power_supply *psy,
 	struct mtk_charger *info;
 	struct chg_alg_device *alg = NULL;
 	struct chg_alg_notify notify;
+	struct power_supply *bat_psy = power_supply_get_by_name("battery");
+	static bool is_disable_quick_charge = false;
 
 	notify.evt = EVT_MAX;
 	notify.value = 0;
@@ -4934,13 +5085,21 @@ int hv_disable_set_property(struct power_supply *psy,
 		if (alg == NULL) {
 			chr_err("get pe5 fail\n");
 		} else {
-			chg_alg_set_prop(alg, ALG_DISABLE_AFC, val->intval);
-			if (!info->disable_quick_charge) {
-				notify.evt = EVT_ALGO_RECOVERY;
-				notify.value = 0;
-				chg_alg_notifier_call(alg, &notify);
+			if (is_disable_quick_charge != info->disable_quick_charge) {
+				chg_alg_set_prop(alg, ALG_DISABLE_AFC, val->intval);
+				if (info->pd_type == MTK_PD_CONNECT_PE_READY_SNK_APDO) {
+					if (!info->disable_quick_charge) {
+						notify.evt = EVT_ALGO_RECOVERY;
+						notify.value = 0;
+						chg_alg_notifier_call(alg, &notify);
+					}
+				}
+				is_disable_quick_charge = info->disable_quick_charge;
+				chr_err("%s: disable quick charge:%d\n", __func__,is_disable_quick_charge);
 			}
-			chr_err("%s: disable quick charge\n", __func__);
+		}
+		if(!IS_ERR_OR_NULL(bat_psy)) {
+			power_supply_changed(bat_psy);
 		}
 		break;
 	default:
@@ -5226,6 +5385,8 @@ int notify_adapter_event(struct notifier_block *notifier,
 		charger_dev_enable_hz(pinfo->chg1_dev, 0);
 		//P240803-01757, liwei19@wt, modify 20240807, Update notification after charging status change
 		atomic_set(&pinfo->batt_full_discharge, 0);
+		pinfo->is_soc_100_in_charging = false;
+		pinfo->is_basic_discharge = false;
 		/* reset PE40 */
 		break;
 
@@ -5476,6 +5637,10 @@ static int mtk_charger_probe(struct platform_device *pdev)
 //-S98901AA1-12182, liwei19@wt, add 20240820, water detect
 	//S98901AA1-12619, liwei19@wt, add 20240822, batt_charging_source
 	info->batt_charging_source = SEC_BATTERY_CABLE_NONE;
+
+	info->is_soc_100_in_charging = false;
+	info->is_basic_discharge = false;
+	info->batt_status = POWER_SUPPLY_STATUS_DISCHARGING;
 
 	//P240803-01757, liwei19@wt, modify 20240807, Update notification after charging status change
 	atomic_set(&info->batt_full_discharge, 0);

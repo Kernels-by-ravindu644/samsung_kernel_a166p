@@ -89,6 +89,9 @@ struct charger_data;
 #define APDO_CHARGER_T2_TO_T3_CURRENT        5200000
 #define APDO_CHARGER_T3_TO_T4_CURRENT        3800000
 #define FIX_PDO_COMMON_INPUT_CURRENT       1100000
+#define FIX_PDO_COMMON_CHARGER_CURRENT     1800000
+#define CHARGING_PROTECT_INPUT_CURRENT     1200000
+
 
 //S98901AA1-12622, liwei19@wt, add 20240822, charging_type
 #define PROP_SIZE_LEN 20
@@ -160,6 +163,15 @@ enum chg_dev_notifier_events {
 	EVENT_FULL,
 	EVENT_RECHARGE,
 	EVENT_DISCHARGE,
+};
+
+enum {
+	LUX_CHARGE_TYPE_UNKNOWN = 0,
+	LUX_CHARGE_TYPE_NONE,
+	LUX_CHARGE_TYPE_TRICKLE,	/* slow speed */
+	LUX_CHARGE_TYPE_FAST,		/* fast speed */
+	LUX_CHARGE_TYPE_SLOW,	/* slow speed, longer life */
+	LUX_CHARGE_TYPE_TAPER,	/* charging in CV phase */
 };
 
 struct battery_thermal_protection_data {
@@ -254,7 +266,7 @@ struct wt_charging_type {
 #define AFC_PRE_INPUT_CURRENT     500000 /* uA */
 #define AFC_CHARGER_INPUT_CURRENT 1670000 /* uA */
 #define AFC_CHARGER_CURRENT 2800000
-#define AFC_MIN_CHARGER_VOLTAGE   4200000
+#define AFC_MIN_CHARGER_VOLTAGE   4600000
 #define AFC_MAX_CHARGER_VOLTAGE   9000000
 #define AFC_COMMON_ICL_CURR_MAX 1800000
 #define CHG_AFC_COMMON_CURR_MAX 2500000
@@ -353,6 +365,12 @@ enum {
 	POWER_SUPPLY_CAPACITY_80_SLEEP,
 	POWER_SUPPLY_CAPACITY_80_OPTION,
 	POWER_SUPPLY_CAPACITY_80_OFFCHARGING,
+	POWER_SUPPLY_CAPACITY_85_OPTION,
+	POWER_SUPPLY_CAPACITY_85_OFFCHARGING,
+	POWER_SUPPLY_CAPACITY_90_OPTION,
+	POWER_SUPPLY_CAPACITY_90_OFFCHARGING,
+	POWER_SUPPLY_CAPACITY_95_OPTION,
+	POWER_SUPPLY_CAPACITY_95_OFFCHARGING,
 };
 
 static const char * const POWER_SUPPLY_BATT_FULL_CAPACITY_TEXT[] = {
@@ -362,6 +380,12 @@ static const char * const POWER_SUPPLY_BATT_FULL_CAPACITY_TEXT[] = {
 	[POWER_SUPPLY_CAPACITY_80_SLEEP]	= "80 SLEEP",
 	[POWER_SUPPLY_CAPACITY_80_OPTION]	= "80 OPTION",
 	[POWER_SUPPLY_CAPACITY_80_OFFCHARGING]	= "80",
+	[POWER_SUPPLY_CAPACITY_85_OPTION]	= "85 OPTION",
+	[POWER_SUPPLY_CAPACITY_85_OFFCHARGING]	= "85",
+	[POWER_SUPPLY_CAPACITY_90_OPTION]	= "90 OPTION",
+	[POWER_SUPPLY_CAPACITY_90_OFFCHARGING]	= "90",
+	[POWER_SUPPLY_CAPACITY_95_OPTION]	= "95 OPTION",
+	[POWER_SUPPLY_CAPACITY_95_OFFCHARGING]	= "95",
 };
 #endif
 
@@ -735,6 +759,9 @@ struct notifier_block charger_nb;
 	//P240803-01757, liwei19@wt, modify 20240807, Update notification after charging status change
 	atomic_t batt_full_discharge;
 
+	bool is_soc_100_in_charging;
+	bool is_basic_discharge;
+	int batt_status;
 //+S98901AA1-12182, liwei19@wt, add 20240820, water detect
 #if CONFIG_WATER_DETECTION
 	int detect_water_state;
@@ -765,7 +792,7 @@ static inline int mtk_chg_alg_notify_call(struct mtk_charger *info,
 	return 0;
 }
 
-/* functions which framework needs*/
+/* functions which framework needs */
 extern int mtk_basic_charger_init(struct mtk_charger *info);
 extern int mtk_pulse_charger_init(struct mtk_charger *info);
 extern int get_uisoc(struct mtk_charger *info);
@@ -795,5 +822,9 @@ extern int mtk_chg_enable_vbus_ovp(bool enable);
 extern int adapter_is_support_pd_pps(struct mtk_charger *info);
 extern bool batt_store_mode;
 
+#if defined (ONEUI_6P1_CHG_PROTECION_ENABLE)
+int wt_batt_full_capacity_check_for_cp(void);
+bool is_batt_full_capacity(void);
+#endif
 
 #endif /* __MTK_CHARGER_H */

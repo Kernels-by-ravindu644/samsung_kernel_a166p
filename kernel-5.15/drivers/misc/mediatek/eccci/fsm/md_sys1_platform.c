@@ -20,6 +20,7 @@
 #else
 #include <dt-bindings/clock/mt6779-clk.h>
 #endif
+#include <linux/pm_domain.h>
 
 #ifdef FEATURE_INFORM_NFC_VSIM_CHANGE
 #include <mach/mt6605.h>
@@ -69,6 +70,10 @@ static struct ccci_clk_node clk_table[] = {
 #define ROr2W(a, b, c)  ccci_write32(a, b, (ccci_read32(a, b)|c))
 #define RAnd2W(a, b, c)  ccci_write32(a, b, (ccci_read32(a, b)&c))
 #define RabIsc(a, b, c) ((ccci_read32(a, b)&c) != c)
+
+static struct notifier_block md_pd_notifier;
+static unsigned int md_power_flg = 0xff; // 1: on, 0: off
+
 
 #ifdef ENABLE_DEBUG_DUMP /* Fix me! */
 void md1_subsys_debug_dump(enum subsys_id sys)
@@ -716,6 +721,8 @@ static int md_cd_power_off(struct ccci_modem *md, unsigned int timeout)
 	CCCI_BOOTUP_LOG(0, TAG,
 		"Call end kicker_pbm_by_md(0,false)\n");
 #endif
+	md_power_flg = 0;
+
 	/* only used for 6835 */
 	if (ap_plat_info == 6835) {
 		CCCI_NORMAL_LOG(0, TAG, "[POWER OFF] ccci_md_emi_req_mask start\n");
@@ -1129,6 +1136,7 @@ static int md_cd_power_on(struct ccci_modem *md)
 
 	/* md_first_power_on set 1 */
 	md_cd_plat_val_ptr.md_first_power_on = 1;
+	md_power_flg = 1;
 
 	return 0;
 }
@@ -1199,6 +1207,22 @@ static struct ccci_plat_ops md_cd_plat_ptr = {
 	.power_off = &md_cd_power_off,
 	.vcore_config = NULL,
 };
+
+static int ccci_md_pd_dump_callback(struct notifier_block *nb,
+			unsigned long flags, void *data)
+{
+	struct ccci_modem *md = NULL;
+
+	CCCI_NORMAL_LOG(0, TAG, "%s, flag %ld\n", __func__, flags);
+	if ((md_power_flg == 1 && flags == GENPD_NOTIFY_ON) ||
+		(md_power_flg == 0 && flags == GENPD_NOTIFY_OFF)) {
+		md = ccci_get_modem();
+		if (md != NULL)
+			md_cd_dump_debug_register(md, true);
+	}
+	CCCI_NORMAL_LOG(0, TAG, "%s exit\n", __func__);
+	return NOTIFY_OK;
+}
 
 static int md_cd_get_modem_hw_info(struct platform_device *dev_ptr,
 	struct ccci_dev_cfg *dev_cfg, struct md_hw_info *hw_info)
@@ -1412,6 +1436,12 @@ static int md_cd_get_modem_hw_info(struct platform_device *dev_ptr,
 		"[POWER ON] dummy: MD MTCMOS ON end %d\n", retval);
 
 #endif
+	md_pd_notifier.notifier_call = ccci_md_pd_dump_callback;
+	md_pd_notifier.priority = 30;
+
+	ret = dev_pm_genpd_add_notifier(&dev_ptr->dev, &md_pd_notifier);
+	if (ret < 0)
+		CCCI_ERROR_LOG(0, TAG, "%s:pm_genpd_add_notifier fail\n", __func__);
 
 	return 0;
 }

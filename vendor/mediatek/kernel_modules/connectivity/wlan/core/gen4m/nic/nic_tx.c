@@ -4013,6 +4013,12 @@ void nicTxProcessTxDoneEvent(struct ADAPTER *prAdapter,
 
 	prTxDone = (struct EVENT_TX_DONE *) (prEvent->aucBuffer);
 
+	if (prTxDone->ucStatus >= TX_RESULT_NUM) {
+		DBGLOG(TX, ERROR, "TxStatus out of range: %u!\n",
+			prTxDone->ucStatus);
+		return;
+	}
+
 /* fos_change begin */
 #if CFG_SUPPORT_EXCEPTION_STATISTICS
 	if (prTxDone->ucStatus != WLAN_STATUS_SUCCESS) {

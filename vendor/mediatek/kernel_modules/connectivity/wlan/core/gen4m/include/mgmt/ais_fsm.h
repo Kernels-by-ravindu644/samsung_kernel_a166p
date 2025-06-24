@@ -199,6 +199,7 @@ enum ENUM_AIS_REQUEST_TYPE {
 	AIS_REQUEST_ROAMING_SEARCH,
 	AIS_REQUEST_ROAMING_CONNECT,
 	AIS_REQUEST_REMAIN_ON_CHANNEL,
+	AIS_REQUEST_BTO,
 	AIS_REQUEST_NUM
 };
 
@@ -426,6 +427,7 @@ struct CONNECTION_SETTINGS {
 	uint8_t *pucAssocIEs;
 	size_t assocIeLen;
 	u_int8_t fgAuthOsenWithRSN;
+	uint8_t ucBTMEnableMode;
 };
 
 struct AIS_LINK_INFO {
@@ -468,6 +470,12 @@ struct MLD_BLOCKLIST_ITEM {
 struct AX_BLACKLIST_ITEM {
 	struct LINK_ENTRY rLinkEntry;
 	uint8_t aucBSSID[MAC_ADDR_LEN];
+};
+
+struct AIS_BTO_INFO {
+	struct BSS_DESC *prBtoBssDesc;
+	uint8_t ucBcnTimeoutReason;
+	uint8_t ucDisconnectReason;
 };
 
 struct AIS_FSM_INFO {
@@ -614,7 +622,25 @@ struct AIS_FSM_INFO {
 	/* roaming count */
 	uint16_t u2ConnectedCount;
 #endif
+
+	struct AIS_BTO_INFO rBtoInfo;
 };
+
+#if (CFG_STAINFO_FEATURE == 1)
+struct GETBSSINFO_T {
+	u_int32_t OUI[3];
+	u_int32_t channel_freq;
+	u_int32_t channel_bw;
+	u_int32_t rssi;
+	u_int32_t datarate;
+	u_int32_t phy_mode;
+	u_int32_t ant_mode;
+	u_int8_t AKM;
+	u_int8_t Roaming_count;
+	u_int32_t KV;
+	u_int32_t KVIE;
+};
+#endif
 
 struct AIS_OFF_CHNL_TX_REQ_INFO {
 	struct LINK_ENTRY rLinkEntry;
@@ -800,6 +826,9 @@ void aisBssBeaconTimeout_impl(struct ADAPTER *prAdapter,
 uint8_t aisBeaconTimeoutFilterPolicy(struct ADAPTER *prAdapter,
 	uint8_t ucBssIndex);
 
+void aisHandleBeaconTimeout(struct ADAPTER *prAdapter,
+	uint8_t ucBssIndex, u_int8_t fgDelayAbortIndication);
+
 void aisBssLinkDown(struct ADAPTER *prAdapter,
 	uint8_t ucBssIndex);
 
@@ -978,9 +1007,12 @@ struct PMKID_ENTRY *aisSearchPmkidEntry(struct ADAPTER *prAdapter,
 /*----------------------------------------------------------------------------*/
 /* CSA Handler                                                                */
 /*----------------------------------------------------------------------------*/
+void aisFunFlushTxQueue(struct ADAPTER *prAdapter,
+	struct STA_RECORD *prStaRec);
+void aisFuncSwitchChannel(struct ADAPTER *prAdapter,
+	struct BSS_INFO *prBssInfo);
 void aisUpdateParamsForCSA(struct ADAPTER *prAdapter,
 	struct BSS_INFO *prBssInfo);
-
 void aisReqJoinChPrivilegeForCSA(struct ADAPTER *prAdapter,
 	struct AIS_FSM_INFO *prAisFsmInfo,
 	struct BSS_INFO *prBss,

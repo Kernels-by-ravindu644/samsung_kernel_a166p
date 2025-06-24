@@ -730,7 +730,7 @@ int afc_check_charger(struct mtk_charger *pinfo)
 		return ret;
 	}
 
-#if IS_ENABLED(CONFIG_DRV_SAMSUNG)
+#if 0//IS_ENABLED(CONFIG_DRV_SAMSUNG)
 	if (afc_device->afc_disable) {
 		pr_info("%s: disabled by USER\n", __func__);
 		return ret;
@@ -1001,7 +1001,7 @@ static ssize_t afc_disable_store(struct device *dev,
 				    const char *buf, size_t count)
 {
 	struct afc_dev *afc = dev_get_drvdata(dev);
-	int param_val, ret = 0;
+	int ret = 0;
 	union power_supply_propval psy_val;
 	struct power_supply *psy = power_supply_get_by_name("hv_disable");
 
@@ -1014,8 +1014,6 @@ static ssize_t afc_disable_store(struct device *dev,
 
 		return count;
 	}
-
-	param_val = afc->afc_disable ? '1' : '0';
 
 #if defined(CONFIG_SEC_PARAM)
 	ret = sec_set_param(CM_OFFSET + 1, afc->afc_disable ? '1' : '0');
@@ -1099,7 +1097,7 @@ int afc_charge_init(struct mtk_charger *pinfo)
 
 	afc->ta_vchr_org = 5000000;
 	afc->vol = pinfo->data.afc_max_charger_voltage;
-	pinfo->data.afc_min_charger_voltage = 4200000;
+	pinfo->data.afc_min_charger_voltage = 4600000;
 	afc->to_check_chr_type = true;
 	afc->is_enable = true;
 	afc->is_connect = false;

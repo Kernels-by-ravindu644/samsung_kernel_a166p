@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
  * FIVE State machine
  *
@@ -19,7 +20,6 @@
 #include "five_state.h"
 #include "five_hooks.h"
 #include "five_cache.h"
-#include "five_dsms.h"
 
 enum task_integrity_state_cause {
 	STATE_CAUSE_UNKNOWN,
@@ -363,20 +363,6 @@ void five_state_proceed(struct task_integrity *integrity,
 				state_to_reason_cause(task_result.cause), file);
 			five_hook_integrity_reset(task, file,
 				state_to_reason_cause(task_result.cause));
-
-			if  (fn != BPRM_CHECK) {
-				char comm[TASK_COMM_LEN];
-				char filename[NAME_MAX];
-				char *pathbuf = NULL;
-
-				five_dsms_reset_integrity(
-					get_task_comm(comm, task),
-					task_result.cause,
-					five_d_path(&file->f_path, &pathbuf,
-						    filename));
-				if (pathbuf)
-					__putname(pathbuf);
-			}
 		}
 		five_audit_verbose(task, file, five_get_string_fn(fn),
 			task_result.prev_tint, task_result.new_tint,

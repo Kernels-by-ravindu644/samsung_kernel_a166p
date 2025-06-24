@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: GPL-2.0 */
+
 #ifndef __INCLUDE_TAILER_H__
 #define __INCLUDE_TAILER_H__
 

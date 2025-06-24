@@ -6727,7 +6727,7 @@
 		vsys_watt = <5000000>;
 		ibus_err = <14>;
 
-		pd_stop_battery_soc = <80>;
+		pd_stop_battery_soc = <101>;
 
 		/* single charger */
 		sc_input_current = <1670000>;
@@ -6781,8 +6781,8 @@
 		ta_cv_ss_repeat_tmin = <25>;
 		vbat_cv = <4448>;
 		start_soc_min = <0>;
-		start_soc_max = <80>;
-		start_vbat_max = <4400>;
+		start_soc_max = <88>;
+		start_vbat_max = <4300>;
 		idvchg_term = <750>;
 		idvchg_step = <50>;
 		ita_level = <2600 2430 1900 1500>;
@@ -6809,8 +6809,8 @@
 		tbat_level_def = <(-5) 4 10 14 25 30 40 45 55>;
 		tbat_curlmt = <(-1) 2357 1900 1900 0 0 0 700 (-1)>;
 		tbat_recovery_area = <3>;
-		tdvchg_level_def = <0 0 0 5 25 55 60 65 130>;
-		tdvchg_curlmt = <(-1) (-1) (-1) 0 0 0 0 0 (-1)>;
+		tdvchg_level_def = <(-10) 0 0 5 25 55 60 65 130>;
+		tdvchg_curlmt = <(-1) 0 0 0 0 0 0 0 (-1)>;
 		tdvchg_recovery_area = <3>;
 		tswchg_level_def = <0 0 0 5 25 65 70 75 80>;
 		tswchg_curlmt = <(-1) (-1) (-1) 200 0 200 300 400 (-1)>;

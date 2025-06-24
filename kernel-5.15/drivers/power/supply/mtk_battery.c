@@ -48,7 +48,7 @@ static char* battery_name[] = {
 	"BATTERY_NOT_DEFAULT",};
 char str_batt_type[64] = {0};
 
-//+S98901AA1-12622, liwei19@wt, add 20240822, charging_type
+//+S98901AA1-12622, liwei19@wt, add 20240822, charging type
 struct wt_charging_type wt_ta_type[] = {
 	{SEC_BATTERY_CABLE_UNKNOWN, "UNDEFINED"},
 	{SEC_BATTERY_CABLE_NONE, "NONE"},
@@ -59,7 +59,16 @@ struct wt_charging_type wt_ta_type[] = {
 	{SEC_BATTERY_CABLE_PDIC, "9V_TA"},
 	{SEC_BATTERY_CABLE_PDIC_APDO, "PDIC_APDO"},
 };
-//-S98901AA1-12622, liwei19@wt, add 20240822, charging_type
+//-S98901AA1-12622, liwei19@wt, add 20240822, charging type
+
+static const char * const LUX_CHARGE_TYPE_TEXT[] = {
+	[LUX_CHARGE_TYPE_UNKNOWN]	= "Unknown",
+	[LUX_CHARGE_TYPE_NONE]		= "N/A",
+	[LUX_CHARGE_TYPE_TRICKLE]	= "Trickle",
+	[LUX_CHARGE_TYPE_FAST]		= "Fast",
+	[LUX_CHARGE_TYPE_SLOW]	    = "Slow",
+	[LUX_CHARGE_TYPE_TAPER]	= "Taper",
+};
 
 //S98901AA1-12182, liwei19.wt 20240820, for water detection debug
 static int wt_debug_value = 0;
@@ -874,6 +883,7 @@ static enum power_supply_property battery_props[] = {
 #define CHARGE_80_SOC 80
 #define CHARGE_90_SOC 90
 #define CHARGE_93_SOC 93
+#define CHARGE_SOC_OFFSET 5
 #define DEADSOC_COEFFICIENT1 98
 #define DEADSOC_COEFFICIENT2 97
 #define DEADSOC_COEFFICIENT3 91
@@ -906,7 +916,7 @@ static enum power_supply_property battery_props[] = {
 #define MAGIC_PPS_CHARGE_2P5A_CC_CURRENT1     2700
 #define MAGIC_PPS_CHARGE_2A_CC_CURRENT1       1800
 #define MAGIC_PPS_CHARGE_2A_CC_CURRENT2       1500
-#define MAGIC_PPS_CHARGE_1P5A_CC_CURRENT1     1600
+#define MAGIC_PPS_CHARGE_1P5A_CC_CURRENT1     1400
 #define MAGIC_PPS_CHARGE_1A_CC_CURRENT1       1000
 
 #define MAGIC_CHARGE_3A_CC_CURRENT1 2200
@@ -923,7 +933,7 @@ static enum power_supply_property battery_props[] = {
 
 #define MAGIC_CHARGE_CC_USB_CURRENT 380
 
-#define MAGIC_CHARGE_END_CV_CURRENT 600
+#define MAGIC_CHARGE_END_CV_CURRENT 700
 
 #define UPDATE_TO_FULL_INTERVAL_S 12
 #define RECHECK_DCP_INTERVAL_S 2
@@ -1094,7 +1104,10 @@ static int select_apdo_magic_current(int fgcurrent, int capacity, int interval)
 		} else if (capacity < CHARGE_93_SOC) {
 			magic_current = MAGIC_PPS_CHARGE_2A_CC_CURRENT1;
 			apdo_init_avg_current =  magic_current;
-		} else {
+		} else if (capacity < CHARGE_STATE_CHANGE_SOC4) {
+			magic_current = MAGIC_PPS_CHARGE_1P5A_CC_CURRENT1;
+			apdo_init_avg_current =  magic_current;
+		}  else {
 			magic_current = MAGIC_PPS_CHARGE_1A_CC_CURRENT1;
 			apdo_init_avg_current =  magic_current;
 		}
@@ -1153,8 +1166,8 @@ static int select_basic_magic_current(int fgcurrent,
 	int current_rise_hys = CURRENT_RISE_HYS_MA;
 
 	if (interval > UPDATE_TO_FULL_INTERVAL_S) {
-		pr_err("%s111: current_threshold=%d, pre_magic_current=%d\n",
-			__func__, current_threshold, pre_magic_current);
+		//pr_err("%s111: current_threshold=%d, pre_magic_current=%d\n",
+			//__func__, current_threshold, pre_magic_current);
 		if (fgcurrent > CHARGE_3A_CC_CURRENT_THRESHOLD) {
 			if ((current_threshold == CURRENT_LEVEL2)
 				&& ((fgcurrent - current_rise_hys) < CHARGE_3A_CC_CURRENT_THRESHOLD)) {
@@ -1220,8 +1233,10 @@ static int select_basic_magic_current(int fgcurrent,
 		switch (batt_charging_source) {
 			case SEC_BATTERY_CABLE_TA:
 			case SEC_BATTERY_CABLE_USB_CDP:
-				if (capacity < CHARGE_90_SOC) {
+				if (capacity < CHARGE_STATE_CHANGE_SOC3) {
 					magic_current = MAGIC_CHARGE_1A_CC_CURRENT1;
+				} else if (capacity < CHARGE_STATE_CHANGE_SOC4) {
+					magic_current = MAGIC_CHARGE_1A_CC_CURRENT2;
 				} else {
 					magic_current = MAGIC_CHARGE_END_CV_CURRENT;
 				}
@@ -1252,7 +1267,7 @@ static int select_basic_magic_current(int fgcurrent,
 					} else if (capacity < CHARGE_STATE_CHANGE_SOC4) {
 						magic_current = MAGIC_CHARGE_1A_CC_CURRENT1;
 					} else {
-						magic_current = MAGIC_CHARGE_END_CV_CURRENT;
+						magic_current = MAGIC_CHARGE_1A_CC_CURRENT2;
 					}
 				}
 				break;
@@ -1294,6 +1309,22 @@ static int wt_get_battery_current(struct mtk_battery *gm)
 	return fgcurrent;
 }
 
+#if defined (ONEUI_6P1_CHG_PROTECION_ENABLE)
+static int wt_get_batt_full_maximum_offset(struct mtk_charger *pinfo)
+{
+	int soc_maximum_offset = 0;
+
+	if (pinfo == NULL)
+		return -1;
+
+	if (pinfo->batt_full_capacity > POWER_SUPPLY_CAPACITY_80_OFFCHARGING) {
+		soc_maximum_offset =
+			pinfo->batt_full_capacity - POWER_SUPPLY_CAPACITY_80_OPTION;
+	}
+
+	return soc_maximum_offset / 2;
+}
+#endif
 static int wt_get_battery_remain_mah(struct mtk_battery *gm,
 						struct mtk_charger *pinfo, int soc)
 {
@@ -1301,6 +1332,10 @@ static int wt_get_battery_remain_mah(struct mtk_battery *gm,
 	int capacity = 0;
 	int remain_mah = 0;
 	int deadsoc_coefficient = DEADSOC_COEFFICIENT1;
+	int charge_full_capacity = CHARGE_FULL_SOC;
+#if defined (ONEUI_6P1_CHG_PROTECION_ENABLE)
+	int soc_maximum_offset = 0;
+#endif
 
 	if (gm == NULL)
 		return -1;
@@ -1325,22 +1360,29 @@ static int wt_get_battery_remain_mah(struct mtk_battery *gm,
 		deadsoc_coefficient = DEADSOC_COEFFICIENT5;
 	}
 
-	remain_ui = CHARGE_FULL_SOC - capacity;
 #if defined (ONEUI_6P1_CHG_PROTECION_ENABLE)
 	if (pinfo->batt_full_capacity > POWER_SUPPLY_CAPACITY_100) {
-		if (capacity >= CHARGE_80_SOC) {
-			//time_to_charge_full = 0;
-			//return time_to_charge_full;
-			capacity = CHARGE_80_SOC;
-		}
-		remain_ui = CHARGE_80_SOC - capacity;
+		soc_maximum_offset = wt_get_batt_full_maximum_offset(pinfo);
+		if (soc_maximum_offset < 0)
+			return -1;
+		charge_full_capacity =
+			CHARGE_80_SOC + soc_maximum_offset * CHARGE_SOC_OFFSET;
 	}
 #endif
+	if (charge_full_capacity > CHARGE_FULL_SOC) {
+		charge_full_capacity = CHARGE_FULL_SOC;
+	}
+
+	if (capacity >= charge_full_capacity) {
+		capacity = charge_full_capacity;
+	}
+
+	pr_err("%s: charge_full_capacity=%d\n", __func__, charge_full_capacity);
+	remain_ui = charge_full_capacity - capacity;
 
 	remain_mah = DESIGNED_CAPACITY * deadsoc_coefficient * remain_ui / 100 / 100;
 	return remain_mah;
 }
-
 
 static int wt_get_slow_update_th(int wt_initial_time_interval,
 					int time_to_full_update_th, int capacity)
@@ -1526,8 +1568,22 @@ static int wt_check_min_remain_time(struct mtk_charger *pinfo,
 	int ui_time_to_full_min3 = 0;
 	int ui_time_to_full_min4 = 0;
 	int ui_time_to_full_min5 = 0;
+	int ui_time_to_full_min6 = 0;
+	int ui_time_to_full_min7 = 0;
+	int ui_time_to_full_min8 = 0;
 	bool is_protection_mode = false;
 	bool disable_quick_charge = false;
+#if defined (ONEUI_6P1_CHG_PROTECION_ENABLE)
+	int soc_maximum_offset = 0;
+#endif
+	int capacity_threshold1 = 60;
+	int capacity_threshold2 = 70;
+	int capacity_threshold3 = 80;
+	int capacity_threshold4 = 90;
+	int capacity_threshold5 = 95;
+	int capacity_threshold6 = 97;
+	int capacity_threshold7 = 98;
+	int capacity_threshold8 = 99;
 
 	if (pinfo == NULL)
 		return -1;
@@ -1537,6 +1593,22 @@ static int wt_check_min_remain_time(struct mtk_charger *pinfo,
 #if defined (ONEUI_6P1_CHG_PROTECION_ENABLE)
 	if (pinfo->batt_full_capacity > POWER_SUPPLY_CAPACITY_100) {
 		is_protection_mode = true;
+		soc_maximum_offset = wt_get_batt_full_maximum_offset(pinfo);
+		if (soc_maximum_offset < 0) {
+			soc_maximum_offset = 0;
+		}
+		capacity_threshold1 = 40 + soc_maximum_offset * CHARGE_SOC_OFFSET;
+		capacity_threshold2 = 50 + soc_maximum_offset * CHARGE_SOC_OFFSET;
+		capacity_threshold3 = 60 + soc_maximum_offset * CHARGE_SOC_OFFSET;
+		capacity_threshold4 = 70 + soc_maximum_offset * CHARGE_SOC_OFFSET;
+		capacity_threshold5 = 75 + soc_maximum_offset * CHARGE_SOC_OFFSET;
+		capacity_threshold6 = 77 + soc_maximum_offset * CHARGE_SOC_OFFSET;
+		capacity_threshold7 = 78 + soc_maximum_offset * CHARGE_SOC_OFFSET;
+		capacity_threshold8 = 79 + soc_maximum_offset * CHARGE_SOC_OFFSET;
+
+		if (capacity_threshold5 > 95) {
+			return -1;
+		}
 	}
 #endif
 
@@ -1553,13 +1625,19 @@ static int wt_check_min_remain_time(struct mtk_charger *pinfo,
 			ui_time_to_full_min2 = 3300;
 			ui_time_to_full_min3 = 2160;
 			ui_time_to_full_min4 = 1080;
-			ui_time_to_full_min5 = 360;
+			ui_time_to_full_min5 = 420;
+			ui_time_to_full_min6 = 300;
+			ui_time_to_full_min7 = 180;
+			ui_time_to_full_min8 = 120;
 		} else {
 			ui_time_to_full_min1 = 4200;
 			ui_time_to_full_min2 = 3300;
 			ui_time_to_full_min3 = 2160;
 			ui_time_to_full_min4 = 1200;
-			ui_time_to_full_min5 = 480;
+			ui_time_to_full_min5 = 540;
+			ui_time_to_full_min6 = 360;
+			ui_time_to_full_min7 = 240;
+			ui_time_to_full_min8 = 180;
 		}
 	} else if (pinfo->pd_type == MTK_PD_CONNECT_PE_READY_SNK_APDO) {
 		if (is_protection_mode) {
@@ -1567,13 +1645,19 @@ static int wt_check_min_remain_time(struct mtk_charger *pinfo,
 			ui_time_to_full_min2 = 1380;
 			ui_time_to_full_min3 = 900;
 			ui_time_to_full_min4 = 480;
-			ui_time_to_full_min5 = 240;
+			ui_time_to_full_min5 = 300;
+			ui_time_to_full_min6 = 240;
+			ui_time_to_full_min7 = 180;
+			ui_time_to_full_min8 = 120;
 		} else {
 			ui_time_to_full_min1 = 2160;
 			ui_time_to_full_min2 = 1740;
 			ui_time_to_full_min3 = 1320;
 			ui_time_to_full_min4 = 900;
-			ui_time_to_full_min5 = 480;
+			ui_time_to_full_min5 = 540;
+			ui_time_to_full_min6 = 360;
+			ui_time_to_full_min7 = 240;
+			ui_time_to_full_min8 = 180;
 		}
 	} else {
 		if ((batt_charging_source == SEC_BATTERY_CABLE_9V_TA)
@@ -1583,26 +1667,34 @@ static int wt_check_min_remain_time(struct mtk_charger *pinfo,
 				ui_time_to_full_min2 = 2160;
 				ui_time_to_full_min3 = 1500;
 				ui_time_to_full_min4 = 660;
-				ui_time_to_full_min5 = 300;
+				ui_time_to_full_min5 = 360;
+				ui_time_to_full_min6 = 240;
+				ui_time_to_full_min7 = 180;
+				ui_time_to_full_min8 = 120;
 			} else {
 				ui_time_to_full_min1 = 2760;
 				ui_time_to_full_min2 = 2160;
 				ui_time_to_full_min3 = 1560;
 				ui_time_to_full_min4 = 900;
-				ui_time_to_full_min5 = 480;
+				ui_time_to_full_min5 = 540;
+				ui_time_to_full_min6 = 360;
+				ui_time_to_full_min7 = 240;
+				ui_time_to_full_min8 = 180;
 			}
 		} else {
 			ui_time_to_full_min1 = 4800;
 			ui_time_to_full_min2 = 3900;
 			ui_time_to_full_min3 = 2460;
 			ui_time_to_full_min4 = 1380;
-			ui_time_to_full_min5 = 600;
+			ui_time_to_full_min5 = 660;
+			ui_time_to_full_min6 = 420;
+			ui_time_to_full_min7 = 300;
+			ui_time_to_full_min8 = 180;
 		}
 	}
-	pr_err("%s: ui_time_to_full_min1=%d, ui_time_to_full_min2=%d, ui_time_to_full_min3=%d, ui_time_to_full_min4=%d, ui_time_to_full_min5=%d\n",
-		__func__, ui_time_to_full_min1, ui_time_to_full_min2,
-		ui_time_to_full_min3, ui_time_to_full_min4,
-		ui_time_to_full_min5);
+
+	pr_err("%s: ui_time_to_full_min5=%d, capacity_threshold5=%d\n",
+		__func__, ui_time_to_full_min5, capacity_threshold5);
 
 	if ((ui_time_to_full_min1 == 0) || (ui_time_to_full_min2 == 0)
 		|| (ui_time_to_full_min3 == 0) || (ui_time_to_full_min4 == 0)
@@ -1610,22 +1702,15 @@ static int wt_check_min_remain_time(struct mtk_charger *pinfo,
 		return -1;
 	}
 
-	if (is_protection_mode) {
-		if (((capacity <= 40) && (ui_time_to_full <= ui_time_to_full_min1))
-			|| ((capacity <= 50) && (ui_time_to_full <= ui_time_to_full_min2))
-			|| ((capacity <= 60) && (ui_time_to_full <= ui_time_to_full_min3))
-			|| ((capacity < 70) && (ui_time_to_full <= ui_time_to_full_min4))
-			|| ((capacity < 75) && (ui_time_to_full <= ui_time_to_full_min5))) {
-			time_to_full_update_th = WT_INTERMAL_TIME_MAX;
-		}
-	} else {
-		if (((capacity <= 60) && (ui_time_to_full <= ui_time_to_full_min1))
-			|| ((capacity <= 70) && (ui_time_to_full <= ui_time_to_full_min2))
-			|| ((capacity <= 80) && (ui_time_to_full <= ui_time_to_full_min3))
-			|| ((capacity < 90) && (ui_time_to_full <= ui_time_to_full_min4))
-			|| ((capacity < 95) && (ui_time_to_full <= ui_time_to_full_min5))) {
-			time_to_full_update_th = WT_INTERMAL_TIME_MAX;
-		}
+	if (((capacity <= capacity_threshold1) && (ui_time_to_full <= ui_time_to_full_min1))
+		|| ((capacity <= capacity_threshold2) && (ui_time_to_full <= ui_time_to_full_min2))
+		|| ((capacity <= capacity_threshold3) && (ui_time_to_full <= ui_time_to_full_min3))
+		|| ((capacity < capacity_threshold4) && (ui_time_to_full <= ui_time_to_full_min4))
+		|| ((capacity < capacity_threshold5) && (ui_time_to_full <= ui_time_to_full_min5))
+		|| ((capacity < capacity_threshold6) && (ui_time_to_full <= ui_time_to_full_min6))
+		|| ((capacity < capacity_threshold7) && (ui_time_to_full <= ui_time_to_full_min7))
+		|| ((capacity < capacity_threshold8) && (ui_time_to_full <= ui_time_to_full_min8))) {
+		time_to_full_update_th = WT_INTERMAL_TIME_MAX;
 	}
 	return time_to_full_update_th;
 }
@@ -1738,19 +1823,22 @@ static int wt_recheck_afc_calculate_time_state(struct mtk_charger *pinfo,
 static int wt_check_protection_calculate_time_state(struct mtk_charger *pinfo)
 {
 	static int old_batt_mode = 0;
-	int batt_mode = pinfo->batt_full_capacity;
+	int batt_mode = 0;
 	bool is_mode_changed = false;
 
 	if (pinfo == NULL)
 		return -1;
 
-	if (((batt_mode > POWER_SUPPLY_CAPACITY_100)
-		&& (old_batt_mode <= POWER_SUPPLY_CAPACITY_100))
-		|| ((batt_mode <= POWER_SUPPLY_CAPACITY_100)
-		&& (old_batt_mode > POWER_SUPPLY_CAPACITY_100))) {
-		is_mode_changed = true;
-	} else {
-		is_mode_changed = false;
+	batt_mode = pinfo->batt_full_capacity;
+	if (batt_mode != old_batt_mode) {
+		if (((batt_mode > POWER_SUPPLY_CAPACITY_100)
+			&& (batt_mode <= POWER_SUPPLY_CAPACITY_80_OFFCHARGING))
+			&& ((old_batt_mode > POWER_SUPPLY_CAPACITY_100)
+			&& (old_batt_mode <= POWER_SUPPLY_CAPACITY_80_OFFCHARGING))) {
+			is_mode_changed = false;
+		} else {
+			is_mode_changed = true;
+		}
 	}
 
 	old_batt_mode = batt_mode;
@@ -1824,6 +1912,10 @@ static int get_time_to_charge_full(struct battery_data *data)
 	static bool is_first_check_afc = true;
 	int wt_recheck_afc = 0;
 	int critical_soc = 0;
+#if defined (ONEUI_6P1_CHG_PROTECION_ENABLE)
+	int soc_maximum_offset = 0;
+#endif
+
 
 	psy = power_supply_get_by_name("mtk-master-charger");
 	if (psy == NULL) {
@@ -1859,7 +1951,7 @@ static int get_time_to_charge_full(struct battery_data *data)
 		wt_calculate_time_state = CALCULATE_INVALID_STATE;
 	}
 
-	pr_err("%s: is_need_recheck_afc=%d\n", __func__, is_need_recheck_afc);
+	//pr_err("%s: is_need_recheck_afc=%d\n", __func__, is_need_recheck_afc);
 	if (is_need_recheck_afc
 		&& ((wt_calculate_time_state == CALCULATE_INIT_STATE)
 		|| (wt_calculate_time_state == CALCULATE_CHARGING_STATE))) {
@@ -1885,8 +1977,8 @@ static int get_time_to_charge_full(struct battery_data *data)
 		if (wt_check_protection_calculate_time_state(pinfo) > 0) {
 			wt_calculate_time_state = CALCULATE_INIT_STATE;
 		}
-		pr_err("%s: check protection: wt_calculate_time_state=%d\n",
-			__func__, wt_calculate_time_state);
+		//pr_err("%s: check protection: wt_calculate_time_state=%d\n",
+			//__func__, wt_calculate_time_state);
 	}
 #endif
 
@@ -1895,8 +1987,8 @@ static int get_time_to_charge_full(struct battery_data *data)
 		if (wt_check_hv_disable_calculate_time_state(pinfo) > 0) {
 			wt_calculate_time_state = CALCULATE_INIT_STATE;
 		}
-		pr_err("%s: check hv_disable: wt_calculate_time_state=%d\n",
-			__func__, wt_calculate_time_state);
+		//pr_err("%s: check hv_disable: wt_calculate_time_state=%d\n",
+		//	__func__, wt_calculate_time_state);
 	}
 
 	switch (wt_calculate_time_state) {
@@ -1948,7 +2040,7 @@ static int get_time_to_charge_full(struct battery_data *data)
 	}
 
 	fgcurrent = calculate_avg_current(fgcurrent);
-	pr_err("%s: avg_current=%d\n", __func__, fgcurrent);
+	bm_info("%s: avg_current=%d\n", __func__, fgcurrent);
 
 	if (is_initial_flag) {
 		pre_charge_plug_time = fulltime_get_sys_time();
@@ -1974,7 +2066,7 @@ static int get_time_to_charge_full(struct battery_data *data)
 	} else if ((pre_magic_current != magic_current) || (pre_remain_mah != remain_mah)) {
 		magic_current_changflg = true;
 	}
-	pr_err("%s:magic_current=%d,%d,%d,chr_type=%d,real_time=%d,%d,%d,pd_type=%d\n", __func__,
+	bm_err("%s:magic_current=%d,%d,%d,chr_type=%d,real_time=%d,%d,%d,pd_type=%d\n", __func__,
 		pre_magic_current, magic_current, magic_current_changflg, pinfo->chr_type,
 		real_time, pre_real_time, pre_charge_plug_time, pinfo->pd_type);
 
@@ -1996,7 +2088,7 @@ static int get_time_to_charge_full(struct battery_data *data)
 	}
 	pre_remain_mah = remain_mah;
 
-	pr_err("%s: is_initial_flag=%d,wt_initial_time_interval=%d\n", __func__, is_initial_flag, wt_initial_time_interval);
+	bm_info("%s: is_initial_flag=%d,wt_initial_time_interval=%d\n", __func__, is_initial_flag, wt_initial_time_interval);
 	if (is_initial_flag && (wt_initial_time_interval < UPDATE_TO_FULL_INTERVAL_S)
 		&& (magic_current != 0)) {
 		initial_time_to_full = remain_mah * 3600 / magic_current;
@@ -2029,7 +2121,7 @@ static int get_time_to_charge_full(struct battery_data *data)
 		wt_time_interval = wt_time_now - wt_time_old;
 	} else {
 		wt_time_interval = -1;
-		pr_err("%s: Invalid. The time reduces\n", __func__);
+		bm_err("%s: Invalid. The time reduces\n", __func__);
 	}
 
 	old_ui_raw_time_diff = raw_time_to_full - old_ui_time_to_full;
@@ -2045,7 +2137,7 @@ static int get_time_to_charge_full(struct battery_data *data)
 		wt_compensation_state = COMPENSATION_LEVEL_REDUCE_QUICK;
 	}
 
-	pr_err("%s: ui_time=%d, raw_time=%d, compensation_state=%d\n",
+	bm_err("%s: ui_time=%d, raw_time=%d, compensation_state=%d\n",
 		__func__, ui_time_to_full, raw_time_to_full, wt_compensation_state);
 
 	switch (wt_compensation_state) {
@@ -2067,6 +2159,13 @@ static int get_time_to_charge_full(struct battery_data *data)
 #if defined (ONEUI_6P1_CHG_PROTECION_ENABLE)
 			if (pinfo->batt_full_capacity > POWER_SUPPLY_CAPACITY_100) {
 				critical_soc = 75;
+				soc_maximum_offset = wt_get_batt_full_maximum_offset(pinfo);
+				if (soc_maximum_offset > 0) {
+					critical_soc += soc_maximum_offset * CHARGE_SOC_OFFSET;
+				}
+				if (critical_soc > 95) {
+					critical_soc = 95;
+				}
 			}
 #endif
 			if (capacity >= critical_soc) {
@@ -2100,6 +2199,13 @@ static int get_time_to_charge_full(struct battery_data *data)
 #if defined (ONEUI_6P1_CHG_PROTECION_ENABLE)
 			if (pinfo->batt_full_capacity > POWER_SUPPLY_CAPACITY_100) {
 				critical_soc = 76;
+				soc_maximum_offset = wt_get_batt_full_maximum_offset(pinfo);
+				if (soc_maximum_offset > 0) {
+					critical_soc += soc_maximum_offset * CHARGE_SOC_OFFSET;
+				}
+				if (critical_soc > 97) {
+					critical_soc = 97;
+				}
 			}
 #endif
 			if (capacity >= critical_soc) {
@@ -2208,6 +2314,100 @@ static void wt_update_battery_health(struct battery_data *bs_data)
 }
 //-S98901AA1, liwei19@wt, add 20240831, modify health
 
+static void battery_update_chg_status(struct battery_data *bat_data, int online)
+{
+	struct power_supply *psy = power_supply_get_by_name("mtk-master-charger");
+	struct mtk_charger *pinfo = NULL;
+
+	if (bat_data == NULL)
+		return;
+
+	if (psy == NULL) {
+		bm_err("[%s] psy == NULL\n", __func__);
+		return;
+	}
+
+	pinfo = (struct mtk_charger *)power_supply_get_drvdata(psy);
+	if (pinfo == NULL) {
+		bm_err("[%s]pinfo is not rdy\n", __func__);
+		return;
+	}
+
+	bm_info("%s status: bat_status:%d soc_in_charging:%d chg_done:%d\n",
+		__func__, bat_data->bat_status, pinfo->is_soc_100_in_charging,
+		pinfo->is_chg_done);
+
+	if ((bat_data->bat_capacity == 100) && (online != 0)) {
+		if (pinfo->is_chg_done
+			&& (bat_data->bat_status != POWER_SUPPLY_STATUS_DISCHARGING)) {
+			bat_data->bat_status = POWER_SUPPLY_STATUS_FULL;
+			pinfo->is_soc_100_in_charging = false;
+		} else if (bat_data->bat_status == POWER_SUPPLY_STATUS_CHARGING) {
+			bat_data->bat_status = POWER_SUPPLY_STATUS_FULL;
+			pinfo->is_soc_100_in_charging = true;
+		}
+	} else {
+#if defined (ONEUI_6P1_CHG_PROTECION_ENABLE)
+		if ((pinfo->batt_soc_rechg == 1)
+			&& (pinfo->batt_full_capacity == 1)
+			&& ((pinfo->is_chg_done
+			&& (bat_data->bat_status == POWER_SUPPLY_STATUS_FULL))
+			|| pinfo->is_soc_100_in_charging)
+			&& (bat_data->bat_capacity > 95)
+			&& (online != 0)
+			&& (bat_data->bat_status != POWER_SUPPLY_STATUS_DISCHARGING)) {
+			bat_data->bat_status = POWER_SUPPLY_STATUS_FULL;
+		} else {
+			if ((pinfo->batt_soc_rechg == 1)
+				&& (pinfo->batt_full_capacity == 1)
+				&& (pinfo->is_soc_100_in_charging)
+				&& (bat_data->bat_capacity == 95)
+				&& (online != 0)) {
+				bat_data->bat_status = POWER_SUPPLY_STATUS_CHARGING;
+			} else {
+				bat_data->bat_status = bat_data->old_bat_status;
+				if ((pinfo->batt_soc_rechg != 1)
+					|| (pinfo->batt_full_capacity != 1)
+					|| (!pinfo->is_soc_100_in_charging)
+					|| (bat_data->bat_capacity < 95)
+					|| (online == 0)) {
+					pinfo->is_soc_100_in_charging = false;
+				}
+			}
+		}
+#endif
+	}
+	pinfo->batt_status = bat_data->bat_status;
+}
+
+static int battery_get_chg_status(void)
+{
+	struct power_supply *psy = power_supply_get_by_name("mtk-master-charger");
+	struct mtk_charger *pinfo = NULL;
+
+	if (psy == NULL) {
+		bm_err("[%s] psy == NULL\n", __func__);
+		return POWER_SUPPLY_STATUS_UNKNOWN;
+	}
+
+	pinfo = (struct mtk_charger *)power_supply_get_drvdata(psy);
+	if (pinfo == NULL) {
+		bm_err("[%s]pinfo is not rdy\n", __func__);
+		return POWER_SUPPLY_STATUS_UNKNOWN;
+	}
+
+#if defined (ONEUI_6P1_CHG_PROTECION_ENABLE)
+	if (pinfo->batt_full_capacity > POWER_SUPPLY_CAPACITY_100) {
+		if ((pinfo->batt_status != POWER_SUPPLY_STATUS_DISCHARGING)
+			&& is_batt_full_capacity()) {
+			pinfo->batt_status = POWER_SUPPLY_STATUS_NOT_CHARGING;
+		}
+	}
+#endif
+	bm_info("%s status:%d\n", __func__, pinfo->batt_status);
+	return pinfo->batt_status;
+}
+
 static int battery_psy_get_property(struct power_supply *psy,
 	enum power_supply_property psp,
 	union power_supply_propval *val)
@@ -2231,7 +2431,8 @@ static int battery_psy_get_property(struct power_supply *psy,
 
 	switch (psp) {
 	case POWER_SUPPLY_PROP_STATUS:
-		val->intval = bs_data->bat_status;
+		//val->intval = bs_data->bat_status;
+		val->intval = battery_get_chg_status();
 		break;
 	case POWER_SUPPLY_PROP_HEALTH:
 		//+S98901AA1, liwei19@wt, add 20240831, modify health
@@ -2510,6 +2711,7 @@ static void mtk_battery_external_power_changed(struct power_supply *psy)
 
 		if (!online.intval) {
 			bs_data->bat_status = POWER_SUPPLY_STATUS_DISCHARGING;
+			bs_data->old_bat_status = POWER_SUPPLY_STATUS_DISCHARGING;
 		} else {
 			if (status.intval == POWER_SUPPLY_STATUS_NOT_CHARGING) {
 				//+liwei19@wt, modify 20241111, PPS charger will display  twice charging icon
@@ -2523,16 +2725,22 @@ static void mtk_battery_external_power_changed(struct power_supply *psy)
 					if (online.intval) {
 						bs_data->bat_status =
 							POWER_SUPPLY_STATUS_CHARGING;
+						bs_data->old_bat_status =
+							POWER_SUPPLY_STATUS_CHARGING;
 						status.intval =
 							POWER_SUPPLY_STATUS_CHARGING;
 					} else {
 						//+liwei19@wt, modify 20241111, PPS charger will display  twice charging icon
 						bs_data->bat_status =
 							POWER_SUPPLY_STATUS_NOT_CHARGING;
+						bs_data->old_bat_status =
+							POWER_SUPPLY_STATUS_NOT_CHARGING;
 					}
 				}  else {
 					//+liwei19@wt, modify 20241111, PPS charger will display  twice charging icon
 					bs_data->bat_status =
+						POWER_SUPPLY_STATUS_NOT_CHARGING;
+					bs_data->old_bat_status =
 						POWER_SUPPLY_STATUS_NOT_CHARGING;
 				}
 			} else {
@@ -2541,14 +2749,19 @@ static void mtk_battery_external_power_changed(struct power_supply *psy)
 				if ((status.intval == POWER_SUPPLY_STATUS_FULL)
 					&& pinfo->is_chg_done
 					&& (pinfo->batt_soc_rechg == 1)
-					&& (pinfo->batt_full_capacity == 1)) {
+					&& (pinfo->batt_full_capacity == 1)
+					&& (bs_data->bat_status == POWER_SUPPLY_STATUS_FULL)) {
 					bs_data->bat_status = POWER_SUPPLY_STATUS_FULL;
+					bs_data->old_bat_status = POWER_SUPPLY_STATUS_FULL;
 				} else {
 					bs_data->bat_status =
 						POWER_SUPPLY_STATUS_CHARGING;
+					bs_data->old_bat_status = POWER_SUPPLY_STATUS_CHARGING;
 				}
 #else
 				bs_data->bat_status =
+					POWER_SUPPLY_STATUS_CHARGING;
+				bs_data->old_bat_status =
 					POWER_SUPPLY_STATUS_CHARGING;
 #endif
 //-P240904-06813, liwei19@wt, modify 20240905,Not recharging When SOC is 99%
@@ -2557,6 +2770,8 @@ static void mtk_battery_external_power_changed(struct power_supply *psy)
 			fg_sw_bat_cycle_accu(gm);
 		}
 
+		//bs_data->old_bat_status = bs_data->bat_status;
+
 		if (status.intval == POWER_SUPPLY_STATUS_FULL
 			&& gm->b_EOC != true) {
 			bm_err("POWER_SUPPLY_STATUS_FULL, EOC\n");
@@ -2564,9 +2779,18 @@ static void mtk_battery_external_power_changed(struct power_supply *psy)
 			bm_err("GAUGE_PROP_BAT_EOC done\n");
 			gm->b_EOC = true;
 			notify_fg_chr_full(gm);
-		} else
+		} else {
+#if defined (ONEUI_6P1_CHG_PROTECION_ENABLE)
+			if ((status.intval != POWER_SUPPLY_STATUS_FULL)
+				|| (pinfo->batt_soc_rechg != 1)
+				|| (pinfo->batt_full_capacity != 1)
+				|| (!pinfo->is_chg_done)) {
+				gm->b_EOC = false;
+			}
+#else
 			gm->b_EOC = false;
-
+#endif
+		}
 		battery_update(gm);
 
 		/* check charger type */
@@ -2618,6 +2842,7 @@ void battery_service_data_init(struct mtk_battery *gm)
 	bs_data->psy_cfg.drv_data = gm;
 
 	bs_data->bat_status = POWER_SUPPLY_STATUS_DISCHARGING,
+	bs_data->old_bat_status = POWER_SUPPLY_STATUS_DISCHARGING,
 	bs_data->bat_health = POWER_SUPPLY_HEALTH_GOOD,
 	bs_data->bat_present = 1,
 	bs_data->bat_technology = POWER_SUPPLY_TECHNOLOGY_LION,
@@ -4467,6 +4692,7 @@ void battery_update_psd(struct mtk_battery *gm)
 	bat_data->bat_batt_temp = force_get_tbat(gm, true);
 }
 
+#if 0
 static int battery_get_chg_done(void)
 {
 	struct power_supply *psy = power_supply_get_by_name("mtk-master-charger");
@@ -4484,6 +4710,7 @@ static int battery_get_chg_done(void)
 
 	return pinfo->is_chg_done;
 }
+#endif
 
 void battery_update(struct mtk_battery *gm)
 {
@@ -4522,11 +4749,17 @@ void battery_update(struct mtk_battery *gm)
 			POWER_SUPPLY_PROP_ONLINE, &online);
 	}
 
+#if 0
 	if (bat_data->bat_capacity == 100 && online.intval != 0 &&
 		bat_data->bat_status != POWER_SUPPLY_STATUS_DISCHARGING && battery_get_chg_done())
 		bat_data->bat_status = POWER_SUPPLY_STATUS_FULL;
-	bm_err("%s status: ui:%d chr:%d status:%d chg_done:%d\n", __func__,
-		bat_data->bat_capacity, online.intval, bat_data->bat_status, battery_get_chg_done());
+#endif
+
+	battery_update_chg_status(bat_data, online.intval);
+
+	bm_err("%s status: ui:%d chr:%d status:%d old_status:%d\n", __func__,
+		bat_data->bat_capacity, online.intval, bat_data->bat_status,
+		bat_data->old_bat_status);
 	power_supply_changed(bat_psy);
 
 }
@@ -5818,6 +6051,47 @@ void mtk_power_misc_init(struct mtk_battery *gm)
 	power_supply_reg_notifier(&gm->sdc.psy_nb);
 }
 
+static bool is_pd_adapter(struct mtk_charger *info)
+{
+	if (info->pd_type == MTK_PD_CONNECT_PE_READY_SNK
+			|| info->pd_type == MTK_PD_CONNECT_PE_READY_SNK_PD30
+			|| info->pd_type == MTK_PD_CONNECT_PE_READY_SNK_APDO) {
+		return true;
+	}
+
+	return false;
+}
+
+static int get_charger_online(void)
+{
+	struct power_supply *chg_psy = NULL;
+	struct mtk_battery *gm;
+	struct battery_data *bs_data = NULL;
+	union power_supply_propval online = {0, };
+	int ret = 0;
+
+	gm = get_mtk_battery();
+	if (gm == NULL) {
+		bm_err("[%s]gm is not rdy\n", __func__);
+		return 0;
+	}
+
+	bs_data = &gm->bs_data;
+	chg_psy = bs_data->chg_psy;
+
+	if (IS_ERR_OR_NULL(chg_psy)) {
+		chg_psy = devm_power_supply_get_by_phandle(&gm->gauge->pdev->dev,
+						       "charger");
+		bm_err("%s retry to get chg_psy\n", __func__);
+		bs_data->chg_psy = chg_psy;
+	} else {
+		ret = power_supply_get_property(chg_psy,
+			POWER_SUPPLY_PROP_ONLINE, &online);
+	}
+
+	return online.intval;
+}
+
 static ssize_t stop_charge_show(struct device *dev,struct device_attribute *attr, char *buf)
 {
 	struct mtk_charger *pinfo;
@@ -6022,6 +6296,63 @@ static ssize_t new_charge_type_show(struct device *dev,struct device_attribute *
 
 static DEVICE_ATTR_RO(new_charge_type);
 
+static ssize_t charge_type_show(struct device *dev,struct device_attribute *attr, char *buf)
+{
+	int online = 0;
+	int chr_type = POWER_SUPPLY_TYPE_UNKNOWN;
+	int usb_type = POWER_SUPPLY_USB_TYPE_UNKNOWN;
+	int charge_type = LUX_CHARGE_TYPE_NONE;
+	struct power_supply *bat_psy;
+	struct mtk_charger *pinfo;
+
+	bat_psy = power_supply_get_by_name("mtk-master-charger");
+	if (bat_psy == NULL) {
+		bm_err("[%s] bat_psy == NULL\n", __func__);
+		return -ENODEV;
+	}
+
+	pinfo = (struct mtk_charger *)power_supply_get_drvdata(bat_psy);
+
+	if (pinfo == NULL) {
+		bm_err("[%s]show_charge_type is not rdy\n", __func__);
+		return -1;
+	}
+
+	online = get_charger_online();
+
+	if (online == 0) {
+		charge_type = LUX_CHARGE_TYPE_NONE;
+	} else {
+		chr_type = pinfo->chr_type;
+		usb_type = pinfo->usb_type;
+		if (chr_type == POWER_SUPPLY_TYPE_UNKNOWN ||
+			usb_type == POWER_SUPPLY_USB_TYPE_UNKNOWN) {
+			charge_type = LUX_CHARGE_TYPE_UNKNOWN;
+		} else if ((chr_type == POWER_SUPPLY_TYPE_USB)
+			&& (usb_type == POWER_SUPPLY_USB_TYPE_DCP)
+			&& (!is_pd_adapter(pinfo))) {
+			charge_type = LUX_CHARGE_TYPE_SLOW;
+		}  else if ((chr_type == POWER_SUPPLY_TYPE_USB)
+			&& (usb_type == POWER_SUPPLY_USB_TYPE_SDP)) {
+			charge_type = LUX_CHARGE_TYPE_SLOW;
+		} else {
+			charge_type = LUX_CHARGE_TYPE_FAST;
+		}
+	}
+
+	bm_err("[%s] charge_type=%d\n", __func__, charge_type);
+
+	if ((charge_type < ARRAY_SIZE(LUX_CHARGE_TYPE_TEXT))
+		&& (charge_type >= 0)) {
+		bm_err("%s: %s\n", __func__, LUX_CHARGE_TYPE_TEXT[charge_type]);
+		return sprintf(buf, "%s\n", LUX_CHARGE_TYPE_TEXT[charge_type]);
+	}
+
+	return sprintf(buf, "%s\n", LUX_CHARGE_TYPE_TEXT[LUX_CHARGE_TYPE_NONE]);
+}
+
+static DEVICE_ATTR_RO(charge_type);
+
 static ssize_t voltage_show(struct device *dev,struct device_attribute *attr, char *buf)
 {
 	struct power_supply *bat_psy;
@@ -6075,20 +6406,26 @@ static ssize_t online_show(struct device *dev,struct device_attribute *attr, cha
 
 	pinfo = (struct mtk_charger *)power_supply_get_drvdata(bat_psy);
 	if (pinfo == NULL) {
-		bm_err("[%s]batt_current_ua_now is not rdy\n", __func__);
+		bm_err("[%s]online show is not rdy\n", __func__);
 		return -1;
 	} else {
 		ret = get_charger_type(pinfo);
 		usb_type = get_usb_type(pinfo);
 	}
-	if (ret == POWER_SUPPLY_TYPE_UNKNOWN)
+
+	if (ret == POWER_SUPPLY_TYPE_UNKNOWN) {
 		noline_type = NO_ADAPTER_TYPE;
-	else if (ret == POWER_SUPPLY_TYPE_USB || ret == POWER_SUPPLY_TYPE_USB_CDP)
-		noline_type = USB_CDP_TYPE;
-	else if (ret == POWER_SUPPLY_TYPE_USB && usb_type == POWER_SUPPLY_USB_TYPE_DCP)
+	} else if ((ret == POWER_SUPPLY_TYPE_USB)
+		&& (usb_type == POWER_SUPPLY_USB_TYPE_DCP)
+		&& (!is_pd_adapter(pinfo))) {
 		noline_type = NO_IMPLEMENT;
-	else
+	} else if (((ret == POWER_SUPPLY_TYPE_USB)
+		&& (usb_type == POWER_SUPPLY_USB_TYPE_SDP))
+		|| (ret == POWER_SUPPLY_TYPE_USB_CDP)) {
+		noline_type = USB_CDP_TYPE;
+	} else {
 		noline_type = AC_ADAPTER_TYPE;
+	}
 	bm_err("[%s] %d, %d, %d\n", __func__, ret, usb_type, noline_type);
 
 	return sprintf(buf, "%d\n",noline_type);
@@ -6292,14 +6629,14 @@ static ssize_t show_batt_misc_event(struct device *dev,struct device_attribute *
 		batt_misc_event |= 0x1;
 		pr_err("detect_water=%d, set water box\n", pinfo->detect_water_state);
 	} else if (ret == POWER_SUPPLY_TYPE_USB && usb_type == POWER_SUPPLY_USB_TYPE_DCP
-		&& (pinfo->pd_type != MTK_PD_CONNECT_PE_READY_SNK_PD30)) {
+		&& (!is_pd_adapter(pinfo))) {
 		batt_misc_event |= 0x4;
 	} else {
 		batt_misc_event |= 0x0;
 	}
 #else
 	if (ret == POWER_SUPPLY_TYPE_USB && usb_type == POWER_SUPPLY_USB_TYPE_DCP
-		&& (pinfo->pd_type != MTK_PD_CONNECT_PE_READY_SNK_PD30))
+		&& (!is_pd_adapter(pinfo)))
 		batt_misc_event |= 0x4;
 	else
 		batt_misc_event |= 0x0;
@@ -6312,10 +6649,13 @@ static ssize_t show_batt_misc_event(struct device *dev,struct device_attribute *
 		pr_err("wt_debug_value != 0  wt_debug_value=%d\n",wt_debug_value);
 	}
 
-	charger_dev_is_charging_done(pinfo->chg1_dev, &chg_done);
-	if (chg_done) {
-		batt_misc_event |= 0x01000000;
+#if defined (ONEUI_6P1_CHG_PROTECION_ENABLE)
+	if (pinfo->batt_full_capacity > POWER_SUPPLY_CAPACITY_100) {
+		if (wt_batt_full_capacity_check_for_cp() < 0) {
+			batt_misc_event |= 0x01000000;
+		}
 	}
+#endif
 
 	bm_err("%s: batt_misc_event=%d, chg_type=%d, usb_type=%d, chg_done=%d\n",
 		__func__, batt_misc_event, ret, usb_type, chg_done);
@@ -6606,6 +6946,7 @@ int battery_psy_init(struct platform_device *pdev)
 	ret = device_create_file(&gm->bs_data.psy->dev, &dev_attr_batt_type);
 	ret = device_create_file(&gm->bs_data.psy->dev, &dev_attr_hv_charger_status);
 	ret = device_create_file(&gm->bs_data.psy->dev, &dev_attr_new_charge_type);
+	ret = device_create_file(&gm->bs_data.psy->dev, &dev_attr_charge_type);
 	ret = device_create_file(&gm->bs_data.psy->dev, &dev_attr_voltage);
 	ret = device_create_file(&gm->bs_data.psy->dev, &dev_attr_set_battery_cycle);
 	ret = device_create_file(&gm->bs_data.psy->dev, &dev_attr_battery_cycle);

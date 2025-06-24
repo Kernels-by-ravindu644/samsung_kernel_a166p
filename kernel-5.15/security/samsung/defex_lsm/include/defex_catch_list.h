@@ -1,10 +1,11 @@
+/* SPDX-License-Identifier: GPL-2.0 */
 /*
  * Copyright (c) 2018 Samsung Electronics Co., Ltd. All Rights Reserved
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License version 2
  * as published by the Free Software Foundation.
-*/
+ */
 
 #ifndef __CONFIG_SECURITY_DEFEX_CATCH_LIST_H
 #define __CONFIG_SECURITY_DEFEX_CATCH_LIST_H
@@ -219,7 +220,7 @@ enum defex_local_syscall {
 
 struct local_syscall_struct {
 	enum defex_local_syscall local_syscall;
-	long int err_code;
+	long err_code;
 };
 
 const struct local_syscall_struct *get_local_syscall(int syscall_no);

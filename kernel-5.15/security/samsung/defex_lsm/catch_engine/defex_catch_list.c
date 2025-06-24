@@ -1,10 +1,11 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
  * Copyright (c) 2018 Samsung Electronics Co., Ltd. All Rights Reserved
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License version 2
  * as published by the Free Software Foundation.
-*/
+ */
 
 #include <linux/uaccess.h>
 #include <linux/device.h>
@@ -32,9 +33,9 @@ const struct local_syscall_struct *get_local_syscall(int syscall_no)
 	if ((unsigned int)syscall_no >= __NR_syscalls)
 		return NULL;
 
-	if (!syscall_catch_arr[syscall_no].local_syscall && !syscall_catch_arr[syscall_no].err_code && syscall_no) {
+	if (!syscall_catch_arr[syscall_no].local_syscall
+			&& !syscall_catch_arr[syscall_no].err_code && syscall_no)
 		return &syscall_catch_arr[0];
-	}
 
 	return &syscall_catch_arr[syscall_no];
 }
@@ -42,6 +43,7 @@ const struct local_syscall_struct *get_local_syscall(int syscall_no)
 int syscall_local2global(int syscall_no)
 {
 	int i;
+
 	for (i = 0; i < __NR_syscalls; i++) {
 		if (syscall_catch_arr[i].local_syscall == syscall_no)
 			return i;

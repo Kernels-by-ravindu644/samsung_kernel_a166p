@@ -988,8 +988,34 @@ static int mtu3_ep0_queue(struct usb_ep *ep,
 
 static int mtu3_ep0_dequeue(struct usb_ep *ep, struct usb_request *req)
 {
-	/* we just won't support this */
-	return -EINVAL;
+	struct mtu3_ep *mep = to_mtu3_ep(ep);
+	struct mtu3_request *mreq = to_mtu3_request(req);
+	struct mtu3_request *r;
+	struct mtu3 *mtu = mep->mtu;
+	unsigned long flags;
+	int ret = 0;
+
+	if (mreq->mep != mep)
+		return -EINVAL;
+
+	dev_info(mtu->dev, "%s : req=%p\n", __func__, req);
+	spin_lock_irqsave(&mtu->lock, flags);
+
+	list_for_each_entry(r, &mep->req_list, list) {
+		if (r == mreq)
+			break;
+	}
+	if (r != mreq) {
+		dev_info(mtu->dev, "req=%p not queued to %s\n", req, ep->name);
+		ret = -EINVAL;
+		goto done;
+	}
+
+	mtu3_req_complete(mep, req, -ECONNRESET);
+done:
+	spin_unlock_irqrestore(&mtu->lock, flags);
+
+	return ret;
 }
 
 static int mtu3_ep0_halt(struct usb_ep *ep, int value)

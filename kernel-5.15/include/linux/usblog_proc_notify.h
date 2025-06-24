@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 /*
- * Copyright (C) 2016-2022 Samsung Electronics Co. Ltd.
+ * Copyright (C) 2016-2023 Samsung Electronics Co. Ltd.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -8,7 +8,7 @@
  * (at your option) any later version.
  */
 
-  /* usb notify layer v3.7 */
+  /* usb notify layer v4.0 */
 
 #ifndef __LINUX_USBLOG_PROC_NOTIFY_H__
 #define __LINUX_USBLOG_PROC_NOTIFY_H__
@@ -327,6 +327,11 @@ enum extra {
 	NOTIFY_EXTRA_VIB_FW_LOAD_SUCCESS,
 };
 
+enum printk_usb_op {
+	NOTIFY_PRINTK_USB_NORMAL = 0,
+	NOTIFY_PRINTK_USB_SNAPSHOT = 1,
+};
+
 #define ALTERNATE_MODE_NOT_READY	(1 << 0)
 #define ALTERNATE_MODE_READY		(1 << 1)
 #define ALTERNATE_MODE_STOP		(1 << 2)
@@ -340,6 +345,8 @@ extern void store_ccic_version(unsigned char *hw, unsigned char *sw_main,
 extern unsigned long long show_ccic_version(void);
 extern void store_ccic_bin_version(const unsigned char *sw_main,
 					const unsigned char *sw_boot);
+extern void store_tcpc_name(char *name);
+extern void printk_usb(int snapshot, char *fmt, ...);
 extern int register_usblog_proc(void);
 extern void unregister_usblog_proc(void);
 #else
@@ -349,6 +356,8 @@ static inline void store_ccic_version(unsigned char *hw, unsigned char *sw_main,
 static inline unsigned long long show_ccic_version(void) {return 0; }
 static inline void store_ccic_bin_version(const unsigned char *sw_main,
 			const unsigned char *sw_boot) {}
+static inline void store_tcpc_name(char *name) {}
+static inline void printk_usb(int snapshot, char *fmt, ...) {}
 static inline int register_usblog_proc(void)
 			{return 0; }
 static inline void unregister_usblog_proc(void) {}

@@ -117,29 +117,36 @@ u_int8_t p2pRoleFsmNeedMlo(
 void
 p2pRoleFsmStaCsaUpdt(struct ADAPTER *prAdapter,
 		struct LINK *prClientList,
-		enum ENUM_BAND eBand)
+		struct BSS_INFO *prBssInfo)
 {
 	struct STA_RECORD *prCurrStaRec;
 
 	if (prClientList && prClientList->u4NumElem > 0) {
 		LINK_FOR_EACH_ENTRY(prCurrStaRec, prClientList,
-				rLinkEntry, struct STA_RECORD) {
+			rLinkEntry, struct STA_RECORD) {
 			if (HAL_IS_TX_DIRECT(prAdapter)) {
 				nicTxDirectClearStaAcmQ(prAdapter,
-					prCurrStaRec->ucIndex);
+				prCurrStaRec->ucIndex);
 				nicTxDirectClearStaPendQ(prAdapter,
-					prCurrStaRec->ucIndex);
+				prCurrStaRec->ucIndex);
 				nicTxDirectClearStaPsQ(prAdapter,
-					prCurrStaRec->ucIndex);
+				prCurrStaRec->ucIndex);
 			} else {
-				struct MSDU_INFO *prFlushedTxPacketList = NULL;
-
+			struct MSDU_INFO *prFlushedTxPacketList = NULL;
 				prFlushedTxPacketList =
-					qmFlushStaTxQueues(prAdapter,
+				qmFlushStaTxQueues(prAdapter,
 					prCurrStaRec->ucIndex);
 				if (prFlushedTxPacketList)
-					wlanProcessQueuedMsduInfo(prAdapter,
-						prFlushedTxPacketList);
+				wlanProcessQueuedMsduInfo(prAdapter,
+				prFlushedTxPacketList);
+			}
+
+			if (prCurrStaRec->u2BSSBasicRateSet !=
+			prBssInfo->u2BSSBasicRateSet) {
+				prCurrStaRec->u2BSSBasicRateSet =
+				prBssInfo->u2BSSBasicRateSet;
+				nicTxUpdateStaRecDefaultRate(prAdapter,
+					prCurrStaRec);
 			}
 			qmSetStaRecTxAllowed(prAdapter, prCurrStaRec, TRUE);
 		}
@@ -3709,8 +3716,8 @@ p2pRoleFsmRunEventChnlGrant(struct ADAPTER *prAdapter,
 			prClientList = &prBssInfo->rStaRecOfClientList;
 
 			p2pRoleFsmStaCsaUpdt(prAdapter,
-				prClientList,
-				prBssInfo->eBand);
+					prClientList,
+					prBssInfo);
 
 			p2pRoleFsmStateTransition(prAdapter,
 				prP2pRoleFsmInfo,

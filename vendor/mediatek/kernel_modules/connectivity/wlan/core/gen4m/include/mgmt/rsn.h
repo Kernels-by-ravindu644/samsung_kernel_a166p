@@ -290,6 +290,25 @@
 #define SA_QUERY_RETRY_TIMEOUT	3000
 #define SA_QUERY_TIMEOUT	501
 
+#ifndef WPA_NONCE_LEN
+#define WPA_NONCE_LEN   32
+#endif
+#ifndef WPA_EAPOL_KEY_FIELD_SIZE
+#define WPA_EAPOL_KEY_FIELD_SIZE  95  /* struct wpa_eapol_key */
+#endif
+#ifndef WPA_KEY_INFO_KEY_TYPE
+#define WPA_KEY_INFO_KEY_TYPE  BIT(3) /* 1 = Pairwise, 0 = Group key */
+#endif
+#ifndef WPA_KEY_INFO_INSTALL
+#define WPA_KEY_INFO_INSTALL   BIT(6)
+#endif
+#ifndef WPA_KEY_INFO_ACK
+#define WPA_KEY_INFO_ACK       BIT(7)
+#endif
+#ifndef WPA_KEY_INFO_SECURE
+#define WPA_KEY_INFO_SECURE    BIT(9)
+#endif
+
 /*******************************************************************************
  *                             D A T A   T Y P E S
  *******************************************************************************
@@ -500,6 +519,7 @@ uint8_t rsnIsKeyMgmtSha256(uint32_t akm);
 uint8_t rsnIsKeyMgmtSha384(uint32_t akm);
 uint8_t rsnKekLen(uint32_t akmp, uint16_t pmk_len);
 uint8_t rsnCipherKeyLen(uint32_t cipher);
+u_int8_t rsnHasNonce(const uint8_t *pucNonceAddr);
 
 /*******************************************************************************
  *                              F U N C T I O N S

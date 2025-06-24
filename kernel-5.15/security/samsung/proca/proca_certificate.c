@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
  * Utility functions to work with PROCA certificate
  *
@@ -176,7 +177,7 @@ int compare_with_five_signature(const struct proca_certificate *certificate,
 int proca_certificate_copy(struct proca_certificate *dst,
 			const struct proca_certificate *src)
 {
-	BUG_ON(!dst || !src);
+	PROCA_BUG_ON(!dst || !src);
 
 	memset(dst, 0, sizeof(*dst));
 
@@ -301,7 +302,7 @@ bool is_certificate_relevant_to_file(
 	u8 stored_file_hash[PROCA_MAX_DIGEST_SIZE] = {0};
 	size_t hash_len = sizeof(stored_file_hash);
 
-	BUG_ON(!file || !parsed_cert);
+	PROCA_BUG_ON(!file || !parsed_cert);
 
 	result = five_calc_file_hash(file, HASH_ALGO_SHA1, stored_file_hash, &hash_len);
 	if (result) {

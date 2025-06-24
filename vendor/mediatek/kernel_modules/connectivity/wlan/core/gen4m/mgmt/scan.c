@@ -27,8 +27,6 @@
  */
 #define REPLICATED_BEACON_STRENGTH_THRESHOLD    (32)
 #define ROAMING_NO_SWING_RCPI_STEP              (10)
-#define REPLICATED_BEACON_FRESH_PERIOD          (10000)
-#define REPLICATED_BEACON_TIME_THRESHOLD        (3000)
 
 /*******************************************************************************
  *                             D A T A   T Y P E S
@@ -674,6 +672,15 @@ scanSearchBssDescByBssidAndSsid(struct ADAPTER *prAdapter,
 	LINK_FOR_EACH_ENTRY(prBssDesc, prBSSDescList,
 		rLinkEntry, struct BSS_DESC) {
 
+		if (prBssDesc == NULL) {
+			DBGLOG(SCN, WARN,
+				"NULL prBssDesc from list %u elem,%p,%p\n",
+				prBSSDescList->u4NumElem,
+				prBSSDescList->prPrev,
+				prBSSDescList->prNext);
+			return prBssDesc;
+		}
+
 		if (!(EQUAL_MAC_ADDR(prBssDesc->aucBSSID, aucBSSID)))
 			continue;
 		if (fgCheckSsid == FALSE || prSsid == NULL)
@@ -751,6 +758,15 @@ scanSearchBssDescByTAAndSsid(struct ADAPTER *prAdapter,
 	/* Search BSS Desc from current SCAN result list. */
 	LINK_FOR_EACH_ENTRY(prBssDesc, prBSSDescList,
 		rLinkEntry, struct BSS_DESC) {
+
+		if (prBssDesc == NULL) {
+			DBGLOG(SCN, WARN,
+				"NULL prBssDesc from list %u elem,%p,%p\n",
+				prBSSDescList->u4NumElem,
+				prBSSDescList->prPrev,
+				prBSSDescList->prNext);
+			return prBssDesc;
+		}
 
 		if (EQUAL_MAC_ADDR(prBssDesc->aucSrcAddr, aucSrcAddr)) {
 			if (fgCheckSsid == FALSE || prSsid == NULL)
@@ -923,12 +939,27 @@ void scanRemoveBssDescsByPolicy(struct ADAPTER *prAdapter,
 
 		GET_CURRENT_SYSTIME(&rCurrentTime);
 
+		if (LINK_IS_INVALID(prBSSDescList)) {
+			DBGLOG(SCN, WARN,
+				"prBSSDescList is invalid\n");
+			return;
+		}
+
 		/* Search BSS Desc from current SCAN result list. */
 		LINK_FOR_EACH_ENTRY_SAFE(prBssDesc, prBSSDescNext,
 			prBSSDescList, rLinkEntry, struct BSS_DESC) {
 #if CFG_EXT_SCAN
 			uint8_t i, fgSameSsid;
 #endif
+
+			if (prBssDesc == NULL) {
+				DBGLOG(SCN, WARN,
+					"NULL prBssDesc from list %u elem,%p,%p\n",
+					prBSSDescList->u4NumElem,
+					prBSSDescList->prPrev,
+					prBSSDescList->prNext);
+				return;
+			}
 
 			if ((u4RemovePolicy & SCN_RM_POLICY_EXCLUDE_CONNECTED)
 				&& (prBssDesc->fgIsConnected
@@ -994,6 +1025,15 @@ void scanRemoveBssDescsByPolicy(struct ADAPTER *prAdapter,
 		LINK_FOR_EACH_ENTRY(prBssDesc, prBSSDescList,
 			rLinkEntry, struct BSS_DESC) {
 
+			if (prBssDesc == NULL) {
+				DBGLOG(SCN, WARN,
+					"NULL prBssDesc from list %u elem,%p,%p\n",
+					prBSSDescList->u4NumElem,
+					prBSSDescList->prPrev,
+					prBSSDescList->prNext);
+				return;
+			}
+
 			if ((u4RemovePolicy & SCN_RM_POLICY_EXCLUDE_CONNECTED)
 				&& (prBssDesc->fgIsConnected
 				|| prBssDesc->fgIsConnecting)) {
@@ -1039,6 +1079,15 @@ void scanRemoveBssDescsByPolicy(struct ADAPTER *prAdapter,
 		/* Search BSS Desc from current SCAN result list. */
 		LINK_FOR_EACH_ENTRY(prBssDesc, prBSSDescList,
 			rLinkEntry, struct BSS_DESC) {
+
+			if (prBssDesc == NULL) {
+				DBGLOG(SCN, WARN,
+					"NULL prBssDesc from list %u elem,%p,%p\n",
+					prBSSDescList->u4NumElem,
+					prBSSDescList->prPrev,
+					prBSSDescList->prNext);
+				return;
+			}
 
 			if ((u4RemovePolicy & SCN_RM_POLICY_EXCLUDE_CONNECTED)
 				&& (prBssDesc->fgIsConnected
@@ -1118,8 +1167,23 @@ void scanRemoveBssDescsByPolicy(struct ADAPTER *prAdapter,
 	if (u4RemovePolicy & SCN_RM_POLICY_ENTIRE) {
 		struct BSS_DESC *prBSSDescNext;
 
+		if (LINK_IS_INVALID(prBSSDescList)) {
+			DBGLOG(SCN, WARN,
+				"prBSSDescList is invalid\n");
+			return;
+		}
+
 		LINK_FOR_EACH_ENTRY_SAFE(prBssDesc, prBSSDescNext,
 			prBSSDescList, rLinkEntry, struct BSS_DESC) {
+
+			if (prBssDesc == NULL) {
+				DBGLOG(SCN, WARN,
+					"NULL prBssDesc from list %u elem,%p,%p\n",
+					prBSSDescList->u4NumElem,
+					prBSSDescList->prPrev,
+					prBSSDescList->prNext);
+				return;
+			}
 
 			if ((u4RemovePolicy & SCN_RM_POLICY_EXCLUDE_CONNECTED)
 				&& (prBssDesc->fgIsConnected
@@ -1161,6 +1225,12 @@ void scanRemoveBssDescByBssid(struct ADAPTER *prAdapter,
 
 	prScanInfo = &(prAdapter->rWifiVar.rScanInfo);
 	prBSSDescList = &prScanInfo->rBSSDescList;
+
+	if (LINK_IS_INVALID(prBSSDescList)) {
+		DBGLOG(SCN, WARN,
+			"prBSSDescList is invalid\n");
+		return;
+	}
 
 	/* Check if such BSS Descriptor exists in a valid list */
 	LINK_FOR_EACH_ENTRY_SAFE(prBssDesc, prBSSDescNext, prBSSDescList,
@@ -1222,6 +1292,12 @@ void scanRemoveBssDescByBandAndNetwork(struct ADAPTER *prAdapter,
 
 	if (eBand == BAND_NULL) {
 		/* no need to do anything, keep all scan result */
+		return;
+	}
+
+	if (LINK_IS_INVALID(prBSSDescList)) {
+		DBGLOG(SCN, WARN,
+			"prBSSDescList is invalid\n");
 		return;
 	}
 
@@ -1288,6 +1364,15 @@ void scanRemoveConnFlagOfBssDescByBssid(struct ADAPTER *prAdapter,
 	/* Search BSS Desc from current SCAN result list. */
 	LINK_FOR_EACH_ENTRY(prBssDesc, prBSSDescList,
 		rLinkEntry, struct BSS_DESC) {
+
+		if (prBssDesc == NULL) {
+			DBGLOG(SCN, WARN,
+				"NULL prBssDesc from list %u elem,%p,%p\n",
+				prBSSDescList->u4NumElem,
+				prBSSDescList->prPrev,
+				prBSSDescList->prNext);
+			return;
+		}
 
 		if (EQUAL_MAC_ADDR(prBssDesc->aucBSSID, aucBSSID)) {
 			prBssDesc->fgIsConnected &= ~BIT(ucBssIndex);
@@ -1593,12 +1678,8 @@ uint8_t scanRnrChnlIsNeedScan(struct ADAPTER *prAdapter,
 	if (ucRnrChNum == 0)
 		return FALSE;
 
-#if (CFG_SUPPORT_WIFI_6G == 1)
-	if (eRfBand == BAND_6G &&
-		!rlmDomainIsLegalChannel(prAdapter, eRfBand, ucRnrChNum)) {
+	if (!rlmDomainIsLegalChannel(prAdapter, eRfBand, ucRnrChNum))
 		return FALSE;
-	}
-#endif
 
 	/* Check RNR scan channel is in current scan list or not,
 	 * if RNR scan channel is 2.4G or 5G, ignore it. 6G needs
@@ -2335,6 +2416,7 @@ struct BSS_DESC *scanAddToBssDesc(struct ADAPTER *prAdapter,
 	    (uint16_t) OFFSET_OF(struct WLAN_BEACON_FRAME_BODY, aucInfoElem[0]);
 
 	kalMemZero(&rSsid, sizeof(rSsid));
+	rSsid.aucSsid[ELEM_MAX_LEN_SSID-1] = '\0';
 	IE_FOR_EACH(pucIE, u2IELength, u2Offset) {
 		/* Error handling for disorder IE that IE length is 0 */
 		if (IE_ID(pucIE) != ELEM_ID_SSID && IE_LEN(pucIE) == 0)
@@ -2585,35 +2667,6 @@ struct BSS_DESC *scanAddToBssDesc(struct ADAPTER *prAdapter,
 #endif
 		if (prBssDesc->eBSSType != eBSSType) {
 			prBssDesc->eBSSType = eBSSType;
-		} else if (ucChnlNum !=
-			prBssDesc->ucChannelNum
-			&& prBssDesc->ucRCPI
-			> nicRxGetRcpiValueFromRxv(
-				prAdapter, RCPI_MODE_MAX, prSwRfb)) {
-			uint8_t ucRcpi = 0;
-
-			/* for signal strength is too much weaker and
-			 * previous beacon is not stale
-			 */
-			ASSERT(prSwRfb->prRxStatusGroup3);
-			ucRcpi = nicRxGetRcpiValueFromRxv(prAdapter,
-				RCPI_MODE_MAX,
-				prSwRfb);
-			if ((prBssDesc->ucRCPI - ucRcpi)
-			    >= REPLICATED_BEACON_STRENGTH_THRESHOLD
-			    && rCurrentTime - prBssDesc->rUpdateTime
-			    <= REPLICATED_BEACON_FRESH_PERIOD) {
-				log_dbg(SCN, TRACE, "rssi(%u) is too much weaker and previous one(%u) is fresh\n",
-					ucRcpi, prBssDesc->ucRCPI);
-				return prBssDesc;
-			}
-			/* for received beacons too close in time domain */
-			else if (rCurrentTime - prBssDesc->rUpdateTime
-				<= REPLICATED_BEACON_TIME_THRESHOLD) {
-				log_dbg(SCN, TRACE, "receive beacon/probe responses too soon(%u:%u)\n",
-					prBssDesc->rUpdateTime, rCurrentTime);
-				return prBssDesc;
-			}
 		}
 
 		/* if Timestamp has been reset, re-generate BSS
@@ -2843,6 +2896,11 @@ struct BSS_DESC *scanAddToBssDesc(struct ADAPTER *prAdapter,
 						  prBssDesc->ucSSIDLen,
 						  SSID_IE(pucIE)->aucSSID,
 						  SSID_IE(pucIE)->ucLength);
+					if (rSsid.u4SsidLen <
+							ELEM_MAX_LEN_SSID) {
+						rSsid.aucSsid[rSsid.u4SsidLen]
+							= '\0';
+					}
 				} else if (fgIsProbeResp) {
 #if (CFG_SUPPORT_WIFI_6G == 1)
 			/* Don't clear SSID for 6G, 6G AP may send unsolicited
@@ -4141,6 +4199,16 @@ void scanReportBss2Cfg80211(struct ADAPTER *prAdapter,
 		/* Search BSS Desc from current SCAN result list. */
 		LINK_FOR_EACH_ENTRY(prBssDesc, prBSSDescList,
 			rLinkEntry, struct BSS_DESC) {
+
+			if (prBssDesc == NULL) {
+				DBGLOG(SCN, WARN,
+					"NULL prBssDesc from list %u elem,%p,%p\n",
+					prBSSDescList->u4NumElem,
+					prBSSDescList->prPrev,
+					prBSSDescList->prNext);
+				return;
+			}
+
 			/* check BSSID is legal channel */
 			if (!scanCheckBssIsLegal(prAdapter, prBssDesc)) {
 				log_dbg(SCN, TRACE, "Remove SSID[%s %d]\n",
@@ -4876,8 +4944,8 @@ void scanParseCheckMTKOuiIE(struct ADAPTER *prAdapter,
 {
 	uint8_t aucMtkOui[] = VENDOR_OUI_MTK;
 	uint8_t *aucCapa = MTK_OUI_IE(pucIE)->aucCapability;
-	uint8_t *ie, *sub;
-	uint16_t ie_len, ie_offset, sub_len, sub_offset;
+	uint8_t *ie;
+	uint16_t ie_len, ie_offset;
 
 	/* only check tlv */
 	if (IE_LEN(pucIE) < ELEM_MIN_LEN_MTK_OUI ||
@@ -4920,13 +4988,21 @@ void scanParseCheckMTKOuiIE(struct ADAPTER *prAdapter,
 	ie_len = IE_LEN(pucIE) - 7;
 
 	IE_FOR_EACH(ie, ie_len, ie_offset) {
+#if IS_ENABLED(CFG_SUPPORT_PRE_WIFI7)
+		uint16_t sub_len, sub_offset;
+		uint8_t *sub;
+
 		if (IE_ID(ie) == MTK_OUI_ID_PRE_WIFI7) {
 			struct IE_MTK_PRE_WIFI7 *prPreWifi7 =
 				(struct IE_MTK_PRE_WIFI7 *)ie;
 
-			DBGLOG(SCN, TRACE, "MTK_OUI_PRE_WIFI7 %d.%d",
-				prPreWifi7->ucVersion1, prPreWifi7->ucVersion0);
 			DBGLOG_MEM8(SCN, TRACE, ie, IE_SIZE(ie));
+			if (IE_SIZE(prPreWifi7) <
+			    sizeof(struct IE_MTK_PRE_WIFI7))
+				return;
+
+			DBGLOG(SCN, TRACE, "MTK_OUI_PRE_WIFI7 %d.%d\n",
+				prPreWifi7->ucVersion1, prPreWifi7->ucVersion0);
 
 			sub = prPreWifi7->aucInfoElem;
 			sub_len = IE_LEN(prPreWifi7) - 2;
@@ -4949,12 +5025,13 @@ void scanParseCheckMTKOuiIE(struct ADAPTER *prAdapter,
 #endif
 			}
 		}
+#endif
 
 		if (IE_ID(ie) == MTK_OUI_ID_CHIP_CAP && IE_LEN(ie) == 8) {
 			struct IE_MTK_CHIP_CAP *prCapIe =
 				(struct IE_MTK_CHIP_CAP *)ie;
 
-			DBGLOG(SCN, TRACE, "MTK_OUI_CHIP_CAP");
+			DBGLOG(SCN, TRACE, "MTK_OUI_CHIP_CAP\n");
 			DBGLOG_MEM8(SCN, TRACE, prCapIe, IE_SIZE(prCapIe));
 #if (CFG_SUPPORT_802_11BE_MLO == 1)
 			if (prCapIe->u8ChipCap & MLD_TYPE_ICV_METHOD_V1)
@@ -5135,6 +5212,16 @@ void scanParseEhtCapIE(uint8_t *pucIE, struct BSS_DESC *prBssDesc)
 	struct IE_EHT_CAP *ehtCap = NULL;
 
 	ehtCap = (struct IE_EHT_CAP *) pucIE;
+
+	/* if payload not contain any aucVarInfo,
+	 * IE size = sizeof(struct IE_EHT_CAP)
+	 */
+	if (IE_SIZE(ehtCap) < (sizeof(struct IE_EHT_CAP))) {
+		DBGLOG(SCN, WARN,
+			"EHT_CAP IE_SIZE err(%d)!\n", IE_SIZE(ehtCap));
+		return;
+	}
+
 	prBssDesc->fgIsEHTPresent = TRUE;
 	prBssDesc->u2MaximumMpdu = (ehtCap->ucEhtMacCap[0] &
 		EHT_MAC_CAP_MAX_MPDU_LEN_MASK);
@@ -5153,6 +5240,15 @@ void scanParseEhtOpIE(uint8_t *pucIE, struct BSS_DESC *prBssDesc,
 	struct EHT_OP_INFO *prEhtOpInfo;
 
 	prEhtOp = (struct IE_EHT_OP *) pucIE;
+
+	/* if payload not contain any aucVarInfo,
+	 * IE size = sizeof(struct IE_EHT_OP)
+	 */
+	if (IE_SIZE(prEhtOp) < (sizeof(struct IE_EHT_OP))) {
+		DBGLOG(SCN, WARN,
+			"EHT_OP IE_SIZE err(%d)!\n", IE_SIZE(prEhtOp));
+		return;
+	}
 
 	if (EHT_IS_OP_PARAM_OP_INFO_PRESENT(prEhtOp->ucEhtOpParams)) {
 

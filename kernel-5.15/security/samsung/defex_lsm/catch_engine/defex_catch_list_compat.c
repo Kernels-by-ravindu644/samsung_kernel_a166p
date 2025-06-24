@@ -1,10 +1,11 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
  * Copyright (c) 2018 Samsung Electronics Co., Ltd. All Rights Reserved
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License version 2
  * as published by the Free Software Foundation.
-*/
+ */
 
 #include <asm/unistd32.h>
 #include <linux/errno.h>
@@ -12,7 +13,7 @@
 #include <linux/version.h>
 #include "include/defex_catch_list.h"
 
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 0, 0)
+#if KERNEL_VER_GTE(4, 0, 0)
 #define __COMPAT_SYSCALL_NR
 #include <asm/unistd.h>
 #else
@@ -25,7 +26,7 @@
 #else
 #define __NR_compat_syscalls		400
 #endif
-#endif /* < KERNEL_VERSION(4, 0, 0) */
+#endif /* < KERNEL_VER_GTE(4, 0, 0) */
 
 #define DEFEX_CATCH_COUNT	__NR_compat_syscalls
 const int defex_nr_syscalls_compat = DEFEX_CATCH_COUNT;
@@ -37,9 +38,9 @@ const struct local_syscall_struct *get_local_syscall_compat(int syscall_no)
 	if ((unsigned int)syscall_no >= __NR_compat_syscalls)
 		return NULL;
 
-	if (!syscall_catch_arr[syscall_no].local_syscall && !syscall_catch_arr[syscall_no].err_code && syscall_no) {
+	if (!syscall_catch_arr[syscall_no].local_syscall
+			&& !syscall_catch_arr[syscall_no].err_code && syscall_no)
 		return &syscall_catch_arr[0];
-	}
 
 	return &syscall_catch_arr[syscall_no];
 }

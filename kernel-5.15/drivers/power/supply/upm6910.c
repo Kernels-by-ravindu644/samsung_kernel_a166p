@@ -53,11 +53,19 @@
 #define POWER_DETECT_VINDPM		4500
 #define UPM6922P_CV_VOLTAGE		4448
 /* +S98901AA1 liangjianfeng wt, modify, 20240906, modify for add sgm41513 adapter */
-#define SGM41543D_ITERM_CURRENT	300
+#define SGM41513D_ITERM_CURRENT	300
 /* -S98901AA1 liangjianfeng wt, modify, 20240906, modify for add sgm41513 adapter */
 
 #define PHY_MODE_BC11_SET 1
 #define PHY_MODE_BC11_CLR 2
+
+#define VCDT_VBUS_THRESHOLD 100
+
+enum sgm_hiz_state {
+	SGM_EXIT_HIZ = 0,
+	SGM_ENTER_HIZ,
+	SGM_NO_HIZ,
+};
 
 enum upm6910_usbsw {
 	USBSW_CHG,
@@ -69,10 +77,6 @@ bool is_upm6910 = false;
 bool is_upm6922 = false;
 bool is_upm6922P = false;
 /*-S96818AA1-9230 lijiawei,wt.modify upm6910 safetytimer function logic*/
-/* +S98901AA1 liangjianfeng wt, modify, 20240906, modify for add sgm41513 adapter */
-bool sgm41513d_chgdone_flg = false;
-bool sgm41513d_firstplugin_flg = false;
-/* -S98901AA1 liangjianfeng wt, modify, 20240906, modify for add sgm41513 adapter */
 
 bool is_primary_chg_probe_ok = false;
 EXPORT_SYMBOL(is_primary_chg_probe_ok);
@@ -212,10 +216,7 @@ struct upm6910 {
 /*+S98901AA1-10226 liangjianfeng,wt.Low-temperature charger power display 97% stop charging*/
 	int chg_old_status;
 /*-S98901AA1-10226 liangjianfeng,wt.Low-temperature charger power display 97% stop charging*/
-/* +S98901AA1 liangjianfeng wt, modify, 20240906, modify for add sgm41513 adapter */
-	int chg_iterm_cnt;
-	int recharge_val;
-/* -S98901AA1 liangjianfeng wt, modify, 20240906, modify for add sgm41513 adapter */
+	int hiz_state;
 };
 
 //+liwei19.wt 20240726, When pr swap, otg device will be disconnected
@@ -395,12 +396,6 @@ int sgm41513d_set_chargecurrent(struct upm6910 *upm, int curr)
 		ichg = 0x30 + (curr -1500) / 120;
 	else
 		ichg = 0x3d;
-/* +S98901AA1 liangjianfeng wt, modify, 20240906, modify for add sgm41513 adapter */
-	if (upm->part_no == SGM41513D) {
-		if (sgm41513d_chgdone_flg)
-			ichg = 0;
-	}
-/* -S98901AA1 liangjianfeng wt, modify, 20240906, modify for add sgm41513 adapter */
     pr_err("sgm41513d_set_ichrg= 0x%x\n", ichg);
 	return upm6910_update_bits(upm, UPM6910_REG_02, REG02_ICHG_MASK,
 				   ichg);
@@ -517,8 +512,13 @@ static int upm6910_get_vbus(struct charger_device *chg_dev,  u32 *vbus)
 		pr_err("upm6910_get_vbus error \n");
 		val = 0;
 	}
+
+	if (val < VCDT_VBUS_THRESHOLD) {
+		val = 0;
+	}
+
 	*vbus = val * 1000;
-	pr_err(" upm_get_vbus :%d \n", val);
+	//pr_err(" upm_get_vbus :%d \n", val);
 
 	return val;
 }
@@ -535,10 +535,7 @@ enum charg_stat upm6910_get_charging_status(struct upm6910 *upm)
 		pr_err("read UPM6910_REG_08 failed, ret:%d\n", ret);
 		return ret;
 	}
-
 	status = (reg_val & REG08_CHRG_STAT_MASK) >> REG08_CHRG_STAT_SHIFT;
-	if ((upm->part_no == SGM41513D) && (sgm41513d_chgdone_flg))
-		status = CHRG_STAT_CHARGING_TERM;
 
 	return status;
 }
@@ -620,9 +617,9 @@ int upm6910_set_chargevolt(struct upm6910 *upm, int volt)
 				int temp = ((volt - REG04_VREG_BASE) % REG04_VREG_LSB);
 				int cv = 0;
 
-				if (temp > 3 && temp < 12){ // set  +8mV
+				if (temp > 4 && temp < 12){ // set  +8mV
 					cv = 1;
-				} else if (temp >= 12 && temp < 22) { //set CV  +step  - 16mV
+				} else if (temp >= 12 && temp <= 22) { //set CV  +step  - 16mV
 					cv = 3;
 					val += 1;
 				} else if (temp > 22) { //set  Cv - 1step, +8mV
@@ -631,8 +628,13 @@ int upm6910_set_chargevolt(struct upm6910 *upm, int volt)
 				} else {
 					cv = 0;
 				}
+
+				if (val == 15)
+					cv = 2;
+
 				ret = upm6910_update_bits(upm, SGM41513D_REG_0F, REG0F_VREG_FT_MASK,
 					cv << REG0F_VREG_FT_SHIFT);
+				//pr_err("cv:%d,val:%d,temp:%d\n", cv,val,temp);
 			}
 /* -S98901AA1 liangjianfeng wt, modify, 20240819, modify for add sgm41513 adapter */
 		}
@@ -663,12 +665,8 @@ int upm6910_set_rechargeth(struct upm6910 *upm, int rechargeth)
 /* +S98901AA1 liangjianfeng wt, modify, 20240906, modify for add sgm41513 adapter */
 	if (rechargeth <= 100) {
 		val = REG04_VRECHG_100MV << REG04_VRECHG_SHIFT;
-		if (upm->part_no == SGM41513D)
-			upm->recharge_val = 100;
 	} else {
 		val = REG04_VRECHG_200MV << REG04_VRECHG_SHIFT;
-		if (upm->part_no == SGM41513D)
-			upm->recharge_val = 200;
 	}
 /* -S98901AA1 liangjianfeng wt, modify, 20240906, modify for add sgm41513 adapter */
 
@@ -684,7 +682,7 @@ static int upm6910_set_recharge(struct charger_device *chg_dev, u32 volt)
 {
 	struct upm6910 *upm = dev_get_drvdata(&chg_dev->dev);
 
-	pr_err("recharge = %d\n", volt);
+	//pr_err("recharge = %d\n", volt);
 	return upm6910_set_rechargeth(upm, volt / 1000);
 }
 
@@ -764,6 +762,125 @@ static int upm6922p_set_input_volt_limit(struct upm6910 *upm, int mv)
 	return ret;
 }
 
+static int sgm41513d_set_input_volt_limit(struct upm6910 *upm, int mv)
+{
+	u8 volt_val, os_val;
+	int ret = 0;
+
+	pr_info("mv:%d\n", mv);
+	if (mv < REG06_VINDPM_3P9V ||
+	    mv > REG06_VINDPM_12P0V)
+		return -EINVAL;
+
+	if (mv < REG06_VINDPM_5P9V) {
+		volt_val = (mv - REG06_VINDPM_3P9V) / REG06_VINDPM_LSB;
+		os_val = REG0F_VINDPM_OS_3P9V;
+	} else if (mv >= REG06_VINDPM_5P9V && mv < REG06_VINDPM_7P5V) {
+		volt_val = (mv - REG06_VINDPM_5P9V) / REG06_VINDPM_LSB;
+		os_val = REG0F_VINDPM_OS_5P9V;
+	} else if (mv >= REG06_VINDPM_7P5V && mv < REG06_VINDPM_10P5V) {
+		volt_val = (mv - REG06_VINDPM_7P5V) / REG06_VINDPM_LSB;
+		os_val = REG0F_VINDPM_OS_7P5V;
+	} else {
+		volt_val = (mv - REG06_VINDPM_10P5V) / REG06_VINDPM_LSB;
+		os_val = REG0F_VINDPM_OS_10P5V;
+	}
+
+	ret =  upm6910_update_bits(upm, UPM6910_REG_06, REG06_VINDPM_MASK,
+				   volt_val << REG06_VINDPM_SHIFT);
+	if (ret < 0) {
+		pr_err("write SGM41513D_REG_06 fail, ret:%d\n", ret);
+		return ret;
+	}
+
+	ret =  upm6910_update_bits(upm, SGM41513D_REG_0F, REG0F_VINDPM_OS_MASK,
+				   os_val << REG0F_VINDPM_OS_SHIFT);
+	if (ret < 0) {
+		pr_err("write SGM41513D_REG_0F fail, ret:%d\n", ret);
+	}
+
+	return ret;
+}
+
+static int sgm41513d_get_vindpm_os(struct upm6910 *upm)
+{
+	u8 reg_val;
+	int ret,os_val;
+
+	ret = upm6910_read_byte(upm, SGM41513D_REG_0F, &reg_val);
+	if (ret != 0)
+		return ret;
+
+	os_val = (reg_val & REG0F_VINDPM_OS_MASK) >> REG0F_VINDPM_OS_SHIFT;
+	pr_info("os_val:%d\n", os_val);
+
+	return os_val;
+}
+
+static int sgm41513d_get_input_volt_limit(struct upm6910 *upm, int *volt)
+{
+	u8 volt_val;
+	int ret,os_val,vindpm;
+
+	ret = upm6910_read_byte(upm, UPM6910_REG_06, &volt_val);
+	if (ret != 0)
+		return ret;
+
+	vindpm = (volt_val & REG06_VINDPM_MASK) >> REG06_VINDPM_SHIFT;
+	os_val = sgm41513d_get_vindpm_os(upm);
+	if (REG0F_VINDPM_OS_3P9V == os_val)
+		vindpm = vindpm * REG06_VINDPM_LSB + REG06_VINDPM_3P9V;
+	else if (REG0F_VINDPM_OS_5P9V == os_val)
+		vindpm = vindpm * REG06_VINDPM_LSB +  REG06_VINDPM_5P9V;
+	else if (REG0F_VINDPM_OS_7P5V == os_val)
+		vindpm = vindpm * REG06_VINDPM_LSB + REG06_VINDPM_7P5V;
+	else if (REG0F_VINDPM_OS_10P5V == os_val)
+		vindpm = vindpm * REG06_VINDPM_LSB + REG06_VINDPM_10P5V;
+	*volt = vindpm;
+	pr_info("vindpm:%d\n", vindpm);
+
+	return ret;
+}
+
+static int upm6910_set_ivl(struct charger_device *chg_dev, u32 volt);
+#define SGM415xx_VINDPM_MAX  12000000
+static int sgm41513d_enable_power_path(struct charger_device *chg_dev, bool en)
+{
+	int ret = 0,init_data_vlim = 0;
+	u32 mivr ;
+	static bool old_state = 0;
+	static 	u32 old_mivr = 0;
+
+	struct upm6910 *upm = dev_get_drvdata(&chg_dev->dev);
+
+	if(IS_ERR_OR_NULL(upm))
+		return -ENOMEM;
+	if (old_state == en) {
+		pr_err("already is set\n");
+		return 0;
+	}
+
+	if (en) {
+		sgm41513d_get_input_volt_limit(upm,&init_data_vlim);
+		old_mivr = init_data_vlim * 1000;
+		mivr = 	SGM415xx_VINDPM_MAX;
+	} else {
+		if (old_mivr ==  0){
+			sgm41513d_get_input_volt_limit(upm,&init_data_vlim);
+			old_mivr = init_data_vlim * 1000;
+		}
+		mivr = 	old_mivr;
+	}
+
+	pr_info("old_mivr=%d,mivr=%d,en=%d\n",old_mivr,mivr,en);
+	ret = upm6910_set_ivl(chg_dev,mivr);
+	if (ret) {
+		dev_err(upm->dev, "%s:power path set failed\n", __func__);
+		return ret;
+	}
+	old_state = en;
+	return 0;
+}
 #if 0
 static int upm6910_get_input_volt_limit(struct upm6910 *upm, int *volt)
 {
@@ -879,11 +996,15 @@ static int upm6910_set_hiz_mode(struct charger_device *chg_dev, bool en)
 	int ret;
 	struct upm6910 *upm = dev_get_drvdata(&chg_dev->dev);
 
-	if (en)
-		ret = upm6910_enter_hiz_mode(upm);
-	else
-		ret = upm6910_exit_hiz_mode(upm);
-
+	if (upm->part_no == SGM41513D) {
+		upm->hiz_state = en;
+		ret = sgm41513d_enable_power_path(chg_dev,en);
+	} else {
+		if (en)
+			ret = upm6910_enter_hiz_mode(upm);
+		else
+			ret = upm6910_exit_hiz_mode(upm);
+	}
 	pr_err("%s hiz mode %s\n", en ? "enable" : "disable",
 			!ret ? "successfully" : "failed");
 
@@ -1683,20 +1804,21 @@ static irqreturn_t upm6910_irq_handler(int irq, void *data)
 
 /*+S96818AA1-1936,zhouxiaopeng2.wt,MODIFY,20230517,optimize interrupt function flow*/
 	if (!prev_vbus_gd && upm->vbus_gd) {
+		if (upm->part_no == SGM41513D) {
+			upm->hiz_state = SGM_NO_HIZ;
+		}
 		//+liwei19.wt 20240726, When pr swap, otg device will be disconnected
 		if (upm->is_need_bc12) {
 			upm6910_chg_set_usbsw(upm, USBSW_CHG);
 		}
 		upm->bc12_retry_done = false;
 		upm->is_need_retry_bc12 = true;
-/* +S98901AA1 liangjianfeng wt, modify, 20240906, modify for add sgm41513 adapter */
-		if (upm->part_no == SGM41513D) {
-			sgm41513d_firstplugin_flg = true;
-		}
-/* -S98901AA1 liangjianfeng wt, modify, 20240906, modify for add sgm41513 adapter */
 		//-liwei19.wt 20240726, When pr swap, otg device will be disconnected
 		pr_err("adapter/usb inserted\n");
 	} else if (prev_vbus_gd && !upm->vbus_gd) {
+		if (upm->part_no == SGM41513D) {
+			upm->hiz_state = SGM_NO_HIZ;
+		}
 		ret = upm6910_get_charger_type(upm);
 		//liwei19.wt 20240726, When pr swap, otg device will be disconnected
 		upm->is_need_bc12 = true;
@@ -1712,13 +1834,6 @@ static irqreturn_t upm6910_irq_handler(int irq, void *data)
 /*+S98901AA1-10226 liangjianfeng,wt.Low-temperature charger power display 97% stop charging*/
 		upm->chg_old_status = POWER_SUPPLY_STATUS_UNKNOWN;
 /*-S98901AA1-10226 liangjianfeng,wt.Low-temperature charger power display 97% stop charging*/
-/* +S98901AA1 liangjianfeng wt, modify, 20240906, modify for add sgm41513 adapter */
-		if (upm->part_no == SGM41513D) {
-			sgm41513d_chgdone_flg = false;
-			sgm41513d_firstplugin_flg = false;
-			upm->chg_iterm_cnt = 0;
-		}
-/* -S98901AA1 liangjianfeng wt, modify, 20240906, modify for add sgm41513 adapter */
 		return IRQ_HANDLED;
 	}
 
@@ -1817,7 +1932,6 @@ static int upm6910_init_device(struct upm6910 *upm)
 	}
 /* +S98901AA1 liangjianfeng wt, modify, 20240906, modify for add sgm41513 adapter */
 	if (upm->part_no == SGM41513D) {
-		sgm41513d_chgdone_flg = false;
 		sgm41513d_recover_dp_for_afc(upm);
 		upm6910_set_chargevolt(upm, UPM6922P_CV_VOLTAGE);
 		upm6910_set_rechargeth(upm, 100);
@@ -1893,8 +2007,8 @@ static void upm6910_inform_prob_dwork_handler(struct work_struct *work)
 	//-liwei19.wt 20240726, When pr swap, otg device will be disconnected
 	//Charger_Detect_Init();
 /* +S98901AA1 liangjianfeng wt, modify, 20240910, modify for add sgm41513 adapter */
-	if (upm->part_no == SGM41513D)
-		upm6910_chg_set_usbsw(upm, USBSW_CHG);
+	//if (upm->part_no == SGM41513D)
+	upm6910_chg_set_usbsw(upm, USBSW_CHG);
 /* -S98901AA1 liangjianfeng wt, modify, 20240910, modify for add sgm41513 adapter */
 	msleep(50);
 	//upm6910_dpdm_set_hidden_mode(upm);
@@ -2127,6 +2241,7 @@ static int upm6910_is_charging_enable(struct charger_device *chg_dev, bool *en)
 }
 
 /* +S98901AA1 liangjianfeng wt, modify, 20240906, modify for add sgm41513 adapter */
+/*
 static int sgm41513d_get_bat_current(struct upm6910 *upm)
 {
 	int ibat;
@@ -2166,59 +2281,19 @@ static int sgm41513d_get_bat_voltage(struct upm6910 *upm)
 
 	return vbat;
 }
-
-static bool sgm41513d_is_chg_done(struct upm6910 *upm, int vreg, int iterm)
-{
-	bool is_done = true;
-	int ibat = sgm41513d_get_bat_current(upm), vbat = sgm41513d_get_bat_voltage(upm);
-	u8 i;
-
-	for(i = 0;i < 3; i++)
-	{
-		if((vreg - vbat) > upm->recharge_val) {
-			is_done = false;
-			sgm41513d_chgdone_flg = false;
-			upm->chg_iterm_cnt = 0;
-		}
-		if(!sgm41513d_chgdone_flg && (ibat > iterm))
-			is_done = false;
-	}
-	dev_info(upm->dev, "[%s]: vbat=%d,ibat=%d,%d,%d,%d\n", __func__, vbat, ibat, i, is_done, upm->chg_iterm_cnt);
-
-	return is_done;
-}
+*/
 
 static int upm6910_is_charging_done(struct charger_device *chg_dev, bool *done)
 {
 	struct upm6910 *upm = dev_get_drvdata(&chg_dev->dev);
 	int ret = 0;
 	u8 val;
+
 	if(is_upm6922P) {
 		ret = upm6910_read_byte(upm, UPM6910_REG_08, &val);
 		if (!ret) {
 			val = val & REG08_CHRG_STAT_MASK;
 			val = val >> REG08_CHRG_STAT_SHIFT;
-			*done = (val == REG08_CHRG_STAT_CHGDONE);
-		}
-	} else if (upm->part_no == SGM41513D) {
-		if (sgm41513d_is_chg_done(upm, UPM6922P_CV_VOLTAGE, SGM41543D_ITERM_CURRENT)) {
-			if (sgm41513d_firstplugin_flg || sgm41513d_chgdone_flg) {
-				if (upm->chg_iterm_cnt < 3)
-					upm->chg_iterm_cnt++;
-				if (upm->chg_iterm_cnt == 3) {
-					sgm41513d_chgdone_flg = true;
-					sgm41513d_firstplugin_flg = false;
-					// ret = upm6910_disable_charger(upm);
-					dev_info(upm->dev, "[%s] done ret=%d\n", __func__, ret);
-				}
-			}
-		}
-		ret = upm6910_read_byte(upm, UPM6910_REG_08, &val);
-		if (!ret) {
-			val = val & REG08_CHRG_STAT_MASK;
-			val = val >> REG08_CHRG_STAT_SHIFT;
-			if (sgm41513d_chgdone_flg == true)
-				val = REG08_CHRG_STAT_CHGDONE;
 			*done = (val == REG08_CHRG_STAT_CHGDONE);
 		}
 	} else {
@@ -2270,14 +2345,7 @@ static int upm6910_get_vchg(struct charger_device *chg_dev, u32 *volt)
 	int vchg = 0, vchg2 = 0;
 	int ret;
 
-	if (!is_upm6922) {
-		ret = upm6910_read_byte(upm, UPM6910_REG_04, &reg_val);
-		if (!ret) {
-			vchg = (reg_val & REG04_VREG_MASK) >> REG04_VREG_SHIFT;
-			vchg = vchg * REG04_VREG_LSB + REG04_VREG_BASE;
-			*volt = vchg * 1000;
-		}
-	} else {
+	if(is_upm6922) {
 		ret = upm6910_read_byte(upm, UPM6910_REG_04, &reg_val);
 		if (!ret) {
 			vchg = (reg_val & REG04_VREG_MASK) >> REG04_VREG_SHIFT;
@@ -2292,6 +2360,38 @@ static int upm6910_get_vchg(struct charger_device *chg_dev, u32 *volt)
 		}
 		pr_err("upm6910_get_vchg():%d,%d,%d,%d,%d\n",
 			*volt, reg_val, vchg, reg_val2, vchg2);
+	} else if (upm->part_no == SGM41513D) {
+		ret = upm6910_read_byte(upm, UPM6910_REG_04, &reg_val);
+		if (!ret) {
+			reg_val = (reg_val & REG04_VREG_MASK) >> REG04_VREG_SHIFT;
+			if (15 == reg_val)
+				vchg = 4350; //default
+			else if (reg_val < 25)
+				vchg = reg_val * REG04_VREG_LSB + REG04_VREG_BASE;
+			*volt = vchg * 1000;
+		}
+		ret = upm6910_read_byte(upm, SGM41513D_REG_0F, &reg_val2);
+		if (!ret) {
+			vchg2 = (reg_val2 & REG0F_VREG_FT_MASK) >> REG0F_VREG_FT_SHIFT;
+			if(vchg2 == 3)
+				vchg2 = -16;
+			else if(vchg2 == 2)
+				vchg2 = -8;
+			else if(vchg2 == 1)
+				vchg2 = 8;
+			else
+				vchg2 = 0;
+			*volt += vchg2 * 1000;
+		}
+		/* pr_err("sgm41513d_get_vchg():%d,%d,%d,%d,%d\n",
+			*volt, reg_val, vchg, reg_val2, vchg2); */
+	} else {
+		ret = upm6910_read_byte(upm, UPM6910_REG_04, &reg_val);
+		if (!ret) {
+			vchg = (reg_val & REG04_VREG_MASK) >> REG04_VREG_SHIFT;
+			vchg = vchg * REG04_VREG_LSB + REG04_VREG_BASE;
+			*volt = vchg * 1000;
+		}
 	}
 
 	return ret;
@@ -2303,9 +2403,14 @@ static int upm6910_set_ivl(struct charger_device *chg_dev, u32 volt)
 
 	pr_err("vindpm volt = %d\n", volt);
 	upm->old_mivr = volt;
-
-	return upm6922p_set_input_volt_limit(upm, volt / 1000);
-
+	if (upm->part_no == SGM41513D) {
+		if ((upm->hiz_state == SGM_ENTER_HIZ)&&(volt != SGM415xx_VINDPM_MAX))
+			return 0;
+		else
+			return sgm41513d_set_input_volt_limit(upm, volt / 1000);
+	} else {
+		return upm6922p_set_input_volt_limit(upm, volt / 1000);
+	}
 }
 
 static int upm6910_get_mivr(struct charger_device *chg_dev, u32 *uV)
@@ -2701,7 +2806,7 @@ static int  upm6910_charger_get_property(struct power_supply *psy,
 	case POWER_SUPPLY_PROP_PRESENT:
 	case POWER_SUPPLY_PROP_ONLINE:
 		val->intval = pg_stat;
-		pr_err("%s: charge_online=%d\n", __func__, pg_stat);
+		//pr_err("%s: charge_online=%d\n", __func__, pg_stat);
 		break;
 /* -P240817-01575 liangjianfeng,wt.80% of the battery can be charged by inserting it into a PD charger, and the charging icon does not disappear after unplugging it */
 	case POWER_SUPPLY_PROP_TYPE:
@@ -2734,19 +2839,10 @@ static int  upm6910_charger_get_property(struct power_supply *psy,
 					val->intval = POWER_SUPPLY_STATUS_CHARGING;
 					break;
 				case CHRG_STAT_CHARGING_TERM:
-/* +S98901AA1 liangjianfeng wt, modify, 20240906, modify for add sgm41513 adapter */
-					if (upm->part_no == SGM41513D) {
-						if (sgm41513d_chgdone_flg)
-							val->intval = POWER_SUPPLY_STATUS_FULL;
-						else
-							val->intval = POWER_SUPPLY_STATUS_DISCHARGING;
-					} else {
 						if (!pg_stat)
 							val->intval = POWER_SUPPLY_STATUS_DISCHARGING;
 						else
 							val->intval = POWER_SUPPLY_STATUS_FULL;
-					}
-/* -S98901AA1 liangjianfeng wt, modify, 20240906, modify for add sgm41513 adapter */
 					break;
 				default:
 					val->intval = POWER_SUPPLY_STATUS_UNKNOWN;
@@ -2927,12 +3023,12 @@ static int upm6910_charger_probe(struct i2c_client *client,
 		printk("remove driver upm69xx\n");
 	        return -ENODEV;
 	}
-
 	upm->platform_data = upm6910_parse_dt(node, upm);
 	if (!upm->platform_data) {
 		pr_err("No platform data provided.\n");
 		return -EINVAL;
 	}
+	upm->hiz_state = SGM_NO_HIZ;
 	upm->psy_desc.type = POWER_SUPPLY_TYPE_UNKNOWN;
 	//+P240722-01067, liwei19.wt 20240724, Prompt "check your charger connection" when connect the HUB.
 	upm->bc12_retry_done = false;

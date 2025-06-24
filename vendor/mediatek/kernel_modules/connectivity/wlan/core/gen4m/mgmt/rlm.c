@@ -1591,6 +1591,23 @@ static void rlmFillExtCapIE(struct ADAPTER *prAdapter,
 	} else
 		DBGLOG(RLM, WARN, "extCapConn = NULL!");
 
+	/* Dynamic set BTM capabilty */
+	if (IS_BSS_AIS(prBssInfo) && prConnSettings->ucBTMEnableMode) {
+		if (prConnSettings->ucBTMEnableMode == 1) {
+			CLEAR_EXT_CAP(prExtCap->aucCapabilities,
+					ELEM_MAX_LEN_EXT_CAP,
+					ELEM_EXT_CAP_BSS_TRANSITION_BIT);
+			DBGLOG(RLM, INFO,
+				"Disable BTM cap by dynamic BTM setting.\n");
+		} else if (prConnSettings->ucBTMEnableMode == 2) {
+			SET_EXT_CAP(prExtCap->aucCapabilities,
+					ELEM_MAX_LEN_EXT_CAP,
+					ELEM_EXT_CAP_BSS_TRANSITION_BIT);
+			DBGLOG(RLM, INFO,
+				"Enable BTM cap by dynamic BTM setting.\n");
+		}
+	}
+
 	/* Disable BTM cap for WPA3 cert. */
 	if (IS_BSS_AIS(prBssInfo)
 		&& IS_FEATURE_DISABLED(prAdapter->rWifiVar.ucBtmCap)) {
@@ -2880,8 +2897,8 @@ void rlmParseMtkOui(
 {
 	uint8_t aucMtkOui[] = VENDOR_OUI_MTK;
 	uint8_t *aucCapa = MTK_OUI_IE(pucIE)->aucCapability;
-	uint8_t *ie, *sub;
-	uint16_t ie_len, ie_offset, sub_len, sub_offset;
+	uint8_t *ie;
+	uint16_t ie_len, ie_offset;
 
 	if (kalMemCmp(MTK_OUI_IE(pucIE)->aucOui,
 		aucMtkOui, sizeof(aucMtkOui)))
@@ -2909,13 +2926,21 @@ void rlmParseMtkOui(
 	ie_len = IE_LEN(pucIE) - 7;
 
 	IE_FOR_EACH(ie, ie_len, ie_offset) {
+#if IS_ENABLED(CFG_SUPPORT_PRE_WIFI7)
+		uint16_t sub_len, sub_offset;
+		uint8_t *sub;
+
 		if (IE_ID(ie) == MTK_OUI_ID_PRE_WIFI7) {
 			struct IE_MTK_PRE_WIFI7 *prPreWifi7 =
 				(struct IE_MTK_PRE_WIFI7 *)ie;
 
-			DBGLOG(RLM, TRACE, "MTK_OUI_PRE_WIFI7 %d.%d",
-				prPreWifi7->ucVersion1, prPreWifi7->ucVersion0);
 			DBGLOG_MEM8(RLM, TRACE, ie, IE_SIZE(ie));
+			if (IE_SIZE(prPreWifi7) <
+			    sizeof(struct IE_MTK_PRE_WIFI7))
+				return;
+
+			DBGLOG(RLM, TRACE, "MTK_OUI_PRE_WIFI7 %d.%d\n",
+				prPreWifi7->ucVersion1, prPreWifi7->ucVersion0);
 
 			sub = prPreWifi7->aucInfoElem;
 			sub_len = IE_LEN(prPreWifi7) - 2;
@@ -2932,6 +2957,7 @@ void rlmParseMtkOui(
 #endif
 			}
 		}
+#endif
 	}
 }
 
@@ -3897,6 +3923,7 @@ static uint8_t rlmRecIeInfoForClient(struct ADAPTER *prAdapter,
 			rlmRecHtOpForClient(prHtOp, prBssInfo,
 						&ucPrimaryChannel);
 			rlmChangeOperationModeAfterCSA(prAdapter, prBssInfo);
+			aisFunFlushTxQueue(prAdapter, prStaRec);
 		}
 
 		if (prCSAParams->fgHasStopTx) {
@@ -7095,15 +7122,10 @@ void rlmCsaTimeout(struct ADAPTER *prAdapter,
 		prBssDesc->ucCenterFreqS1 = prBssInfo->ucVhtChannelFrequencyS1;
 		prBssDesc->ucCenterFreqS2 = prBssInfo->ucVhtChannelFrequencyS2;
 
-		if (IS_BSS_P2P(prBssInfo))
+		if (IS_BSS_AIS(prBssInfo))
+			aisFuncSwitchChannel(prAdapter, prBssInfo);
+		else if (IS_BSS_P2P(prBssInfo))
 			p2pFuncSwitchGcChannel(prAdapter, prBssInfo);
-		else
-			kalIndicateChannelSwitch(
-				prAdapter->prGlueInfo,
-				prBssInfo->eBssSCO,
-				prBssDesc->ucChannelNum,
-				prBssDesc->eBand,
-				prBssInfo->ucBssIndex);
 	} else {
 		DBGLOG(RLM, INFO,
 		       "DFS: BSS: " MACSTR " Desc is not found\n ",
@@ -7139,31 +7161,11 @@ void rlmCsaTimeout(struct ADAPTER *prAdapter,
 		prBssInfo->eBssSCO = CHNL_EXT_SCN;
 		prBssInfo->ucHtOpInfo1 &=
 			~(HT_OP_INFO1_SCO | HT_OP_INFO1_STA_CHNL_WIDTH);
-
 		/* Check SAP channel */
 		p2pFuncSwitchSapChannel(prAdapter);
-
 	}
 
-	if (IS_BSS_AIS(prBssInfo) &&
-		!prBssInfo->fgIsAisSwitchingChnl) {
-		struct AIS_FSM_INFO *prAisFsmInfo;
-
-		prAisFsmInfo = aisGetAisFsmInfo(
-			prAdapter, prBssInfo->ucBssIndex);
-
-		/* Indicate PM abort to sync BSS state with FW */
-		nicPmIndicateBssAbort(prAdapter, prBssInfo->ucBssIndex);
-		/* Defer ucDTIMPeriod updating to when beacon is received */
-		prBssInfo->ucDTIMPeriod = 0;
-		/* Release channel if CSA immediately before set authorized */
-		aisFsmReleaseCh(prAdapter, prBssInfo->ucBssIndex);
-
-		prBssInfo->fgIsAisSwitchingChnl = TRUE;
-		aisReqJoinChPrivilegeForCSA(prAdapter, prAisFsmInfo,
-			prBssInfo, &prAisFsmInfo->ucSeqNumOfChReq);
-	}
-
+	rlmSyncOperationParams(prAdapter, prBssInfo);
 	rlmResetCSAParams(prBssInfo, FALSE);
 }
 #endif /* CFG_SUPPORT_DFS */

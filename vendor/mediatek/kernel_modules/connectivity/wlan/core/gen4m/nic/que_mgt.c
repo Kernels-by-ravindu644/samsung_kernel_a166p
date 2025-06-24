@@ -7597,6 +7597,13 @@ void qmHandleEventBssAbsencePresence(struct ADAPTER *prAdapter,
 
 	prEventBssStatus = (struct EVENT_BSS_ABSENCE_PRESENCE *) (
 		prEvent->aucBuffer);
+
+	if (!IS_BSS_INDEX_VALID(prEventBssStatus->ucBssIndex)) {
+		DBGLOG(QM, WARN, "NAF:BSS IDX is invalid: %u\n",
+			prEventBssStatus->ucBssIndex);
+		return;
+	}
+
 	prBssInfo = GET_BSS_INFO_BY_INDEX(prAdapter,
 		prEventBssStatus->ucBssIndex);
 	if (!prBssInfo) {
@@ -9412,20 +9419,6 @@ void qmArpMonitorHandleTxArpMsg(struct ADAPTER *prAdapter,
 		prRxCtrl->u4LastUnicastRxTime[ucBssIndex];
 
 	if (arpMoniter > uArpMonitorNumber) {
-		if (qmArpMonitorIsIOTIssue(prAdapter, ucBssIndex)) {
-			DBGLOG(QM, WARN, "IOT issue, arp no resp!\n");
-			prAisBssInfo->u2DeauthReason =
-				REASON_CODE_ARP_NO_RESPONSE;
-			qmArpMonitorSetBTOEvent(prAdapter, ucBssIndex);
-		} else {
-			if (prWifiVar->ucArpMonitorUseRule == 0)
-				DBGLOG(QM, WARN, "ARP, still have %d pkts\n",
-					latest_rx_packets - last_rx_packets);
-			else
-				DBGLOG(QM, WARN, "ARP, Rx UC time diff %u\n",
-					latest_rx_unicast_packet_time -
-					last_rx_unicast_packet_time);
-		}
 		arpMoniter = 0;
 		last_rx_packets = 0;
 		latest_rx_packets = 0;
@@ -10314,20 +10307,20 @@ void qmCheckRxEAPOLM3(struct ADAPTER *prAdapter,
 		uint8_t *pucEapol = pucEthBody;
 		uint8_t ucEapolType = pucEapol[1];
 		uint16_t u2KeyInfo = 0;
-		uint8_t m;
+		uint8_t m = 1;
 
 		if (ucEapolType == ETH_EAPOL_KEY) {
 			WLAN_GET_FIELD_BE16(&pucEapol[5], &u2KeyInfo);
-			m = ((u2KeyInfo & 0x1100) == 0x0000 ||
-				(u2KeyInfo & 0x0008) == 0x0000) ? 1 : 3;
+			if ((u2KeyInfo & WPA_KEY_INFO_INSTALL) &&
+			    (u2KeyInfo & WPA_KEY_INFO_ACK))
+				m = 3;
+			else if (u2KeyInfo & WPA_KEY_INFO_ACK)
+				m = 1;
 
-			if (prAdapter->rWifiVar.u4SwTestMode ==
-					ENUM_SW_TEST_MODE_SIGMA_HS20_R2 &&
-					m == 3 &&
-					!prSwRfb->prStaRec->fgIsTxKeyReady) {
+			if (m == 3 && !prSwRfb->prStaRec->fgIsTxKeyReady) {
 				prAdapter->fgIsPostponeTxEAPOLM3 = TRUE;
 				DBGLOG(QM, INFO,
-					"[Passpoint] Postpone sending EAPOL M4 until PTK installed!");
+					"[Passpoint] Postpone sending EAPOL M4 until PTK installed!\n");
 			}
 		}
 	}

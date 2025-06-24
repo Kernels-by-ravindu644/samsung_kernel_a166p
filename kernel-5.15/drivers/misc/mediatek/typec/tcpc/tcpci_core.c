@@ -414,6 +414,7 @@ struct tcpc_device *tcpc_device_register(struct device *parent,
 	mutex_init(&tcpc->timer_lock);
 	mutex_init(&tcpc->mr_lock);
 	spin_lock_init(&tcpc->timer_tick_lock);
+	init_waitqueue_head(&tcpc->resume_wait_que);
 
 	tcpc->dev.class = tcpc_class;
 	tcpc->dev.type = &tcpc_dev_type;

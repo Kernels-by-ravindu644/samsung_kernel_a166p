@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
  * Copyright (c) 2018-2021 Samsung Electronics Co., Ltd. All Rights Reserved
  *
@@ -56,8 +57,9 @@ int dsms_check_message_rate_limit(void)
 
 	current_time_ms = dsms_get_time_ms();
 	if (current_time_ms < dsms_round_start_ms) {
-		DSMS_LOG_DEBUG("[rate limit] RESET current_time_ms=%llu dsms_round_start_ms=%llu dsms_message_count=%d",
-			current_time_ms, dsms_round_start_ms, dsms_message_count);
+		DSMS_LOG_DEBUG("[rate limit] RESET current_time_ms=%llu"
+				" dsms_round_start_ms=%llu dsms_message_count=%d",
+				current_time_ms, dsms_round_start_ms, dsms_message_count);
 		dsms_round_start_ms = current_time_ms;
 		dsms_message_count = 0;
 	}
@@ -65,7 +67,8 @@ int dsms_check_message_rate_limit(void)
 	if (is_new_round(current_time_ms, dsms_round_start_ms)) {
 		dropped_messages = dsms_message_count - dsms_get_max_messages_per_round();
 		if (dropped_messages > 0)
-			DSMS_LOG_ERROR("[rate limit] %d of %d messages dropped", dropped_messages, dsms_message_count);
+			DSMS_LOG_ERROR("[rate limit] %d of %d messages dropped",
+					dropped_messages, dsms_message_count);
 		dsms_round_start_ms = current_time_ms;
 		dsms_message_count = 0;
 		return DSMS_SUCCESS;

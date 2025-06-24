@@ -89,6 +89,25 @@ EXPORT_SYMBOL(sales_code_from_cmdline);
 
 #if SAR_IN_FRANCE
 static bool is_anfr_sar = false;
+extern char *get_board_id(void);
+
+static int hx9036_is_anfr_board(void)
+{
+    char *boardid_string = NULL;
+
+    boardid_string = get_board_id();
+    PRINT_ERR("boardid: %s\n", boardid_string);
+    if(NULL != boardid_string) {
+        if((0 == strncmp(boardid_string, "S98902AA1", 9)) || (0 == strncmp(boardid_string, "S98902AA2", 9)) ||
+                (0 == strncmp(boardid_string, "S98902AA3", 9)) || (0 == strncmp(boardid_string, "S98902AA4", 9)))
+        {
+            PRINT_ERR("It's dont need anfr!\n");
+            return 0;
+        }
+        return 1;
+    }
+    return -1;
+}
 #endif
 
 //64个可选的接近阈值设置
@@ -828,18 +847,20 @@ static void hx9036_input_report_abs(void)
     int ii = 0;
     uint8_t touch_state = 0;
 #if SAR_IN_FRANCE
-    int16_t ch0_result = 0;
-    int16_t ch1_result = 0;
-    int16_t ch2_result = 0;
-    int16_t ch3_result = 0;
-    if (hx9036_pdata.sar_first_boot) {
-        hx9036_read_offset_dac();
-        ch0_result = data_offset_dac[1];
-        ch1_result = data_offset_dac[3];
-        ch2_result = data_offset_dac[5];
-        ch3_result = data_offset_dac[7];
-        PRINT_INF("SAR ch0_result: %d,ch1_result: %d,ch2_result: %d,ch3_result: %d \n", ch0_result, ch1_result, ch2_result, ch3_result);
-        PRINT_INF("SAR hx9036_pdata.sar_first_boot=%d\n",hx9036_pdata.sar_first_boot);
+    if(is_anfr_sar){
+        int16_t ch0_result = 0;
+        int16_t ch1_result = 0;
+        int16_t ch2_result = 0;
+        int16_t ch3_result = 0;
+        if (hx9036_pdata.sar_first_boot) {
+            hx9036_read_offset_dac();
+            ch0_result = data_offset_dac[1];
+            ch1_result = data_offset_dac[3];
+            ch2_result = data_offset_dac[5];
+            ch3_result = data_offset_dac[7];
+            PRINT_INF("SAR ch0_result: %d,ch1_result: %d,ch2_result: %d,ch3_result: %d \n", ch0_result, ch1_result, ch2_result, ch3_result);
+            PRINT_INF("SAR hx9036_pdata.sar_first_boot=%d\n",hx9036_pdata.sar_first_boot);
+        }
     }
 #endif
     for (ii = 0; ii < HX9036_CH_NUM; ii++) {
@@ -852,28 +873,15 @@ static void hx9036_input_report_abs(void)
             continue;
         }
 #if SAR_IN_FRANCE
-       if (MAX_INT_COUNT >= hx9036_pdata.interrupt_count) {
-           if(hx9036_ch_last_state[ii] != hx9036_ch_near_state[ii]){
-                PRINT_ERR("ch_%d state changed!!!\n", ii);
-                hx9036_pdata.interrupt_count++;
-            }
-            hx9036_ch_last_state[ii] = hx9036_ch_near_state[ii];
-        }
-        PRINT_INF("SAR hx9036_pdata.interrupt_count=%d\n",hx9036_pdata.interrupt_count);
-       /* if (hx9036_pdata.sar_first_boot) {
-           if (hx9036_pdata.interrupt_count >= 5 && hx9036_pdata.interrupt_count < 15) {
-                PRINT_INF("hx9036_ch_near_state[0] = %d", hx9036_ch_near_state[0]);
-                if (hx9036_ch_near_state[2] == IDLE && cali_test_index == 1) {
-                    hx9036_manual_offset_calibration(2);
-                    PRINT_INF("hx9036:interrupt_count:%d, wifi sar cali", hx9036_pdata.interrupt_count);
-                    cali_test_index = 0;
-                    PRINT_INF("hx9036:interrupt_count:%d", hx9036_pdata.interrupt_count);
+        if(is_anfr_sar){
+            if (MAX_INT_COUNT >= hx9036_pdata.interrupt_count) {
+                if(hx9036_ch_last_state[ii] != hx9036_ch_near_state[ii]){
+                    PRINT_ERR("ch_%d state changed!!!\n", ii);
+                    hx9036_pdata.interrupt_count++;
                 }
-            } else if(hx9036_pdata.interrupt_count == 15 && cali_test_index == 1) {
-                    PRINT_INF("hx9036:interrupt_count:15, wifi sar cali");
-                    hx9036_manual_offset_calibration(2);
-                    PRINT_INF("hx9036:interrupt_count:%d", hx9036_pdata.interrupt_count);
-           }*/
+                hx9036_ch_last_state[ii] = hx9036_ch_near_state[ii];
+            }
+            PRINT_INF("SAR hx9036_pdata.interrupt_count=%d\n",hx9036_pdata.interrupt_count);
             if (hx9036_pdata.sar_first_boot  && is_anfr_sar && (hx9036_pdata.interrupt_count < MAX_INT_COUNT) &&   \
                       (data_lp[1] >= EXIT_ANFR_LP) && (data_lp[3] >= EXIT_ANFR_LP) && (data_lp[5] >= EXIT_ANFR_LP)&& (data_lp[7] >= EXIT_ANFR_LP)) {
                 PRINT_INF("force %s State=Near\n", hx9036_channels[ii].name);
@@ -887,7 +895,7 @@ static void hx9036_input_report_abs(void)
             }
             PRINT_INF("exit force input near mode!!!\n");
             hx9036_pdata.sar_first_boot = false;
-        //}
+        }
 #endif
         touch_state = hx9036_ch_near_state[ii];
 //+P86801AA1-1797, ludandan.wt,ADD, 2023/05/20, add sar power reduction control switch
@@ -1213,7 +1221,11 @@ static int hx9036_ch_en_hal(uint8_t ch_id, uint8_t enable)//yasin: for upper lay
                 }
                 hx9036_pdata.chs_info[ch_id].state = IDLE;
                 hx9036_pdata.chs_info[ch_id].enabled = true;
-
+                if(!(ch_id % 2)) {
+                    PRINT_ERR("hx9036_ch_en success\n");
+                    mutex_unlock(&hx9036_ch_en_mutex);
+                    return 0;
+                }
 #if HX9036_REPORT_EVKEY
                         input_event(hx9036_pdata.input_dev_key, EV_KEY, hx9036_pdata.chs_info[ch_id].keycode, IDLE);
                         input_sync(hx9036_pdata.input_dev_key);
@@ -1232,14 +1244,18 @@ static int hx9036_ch_en_hal(uint8_t ch_id, uint8_t enable)//yasin: for upper lay
                 }
                 hx9036_pdata.chs_info[ch_id].state = IDLE;
                 hx9036_pdata.chs_info[ch_id].enabled = false;
-
+                if(!(ch_id % 2)) {
+                    PRINT_ERR("hx9036_ch_en success\n");
+                    mutex_unlock(&hx9036_ch_en_mutex);
+                    return 0;
+                }
 #if HX9036_REPORT_EVKEY
-        input_event(hx9036_pdata.input_dev_key, EV_KEY, hx9036_pdata.chs_info[ch_id].keycode, -1);
-        input_sync(hx9036_pdata.input_dev_key);
+                input_event(hx9036_pdata.input_dev_key, EV_KEY, hx9036_pdata.chs_info[ch_id].keycode, -1);
+                input_sync(hx9036_pdata.input_dev_key);
 #else
-        input_report_rel(hx9036_pdata.chs_info[ch_id].hx9036_input_dev, REL_MISC, -1);
-        input_report_rel(hx9036_pdata.chs_info[ch_id].hx9036_input_dev, REL_X, 2);
-        input_sync(hx9036_pdata.chs_info[ch_id].hx9036_input_dev);
+                input_report_rel(hx9036_pdata.chs_info[ch_id].hx9036_input_dev, REL_MISC, -1);
+                input_report_rel(hx9036_pdata.chs_info[ch_id].hx9036_input_dev, REL_X, 2);
+                input_sync(hx9036_pdata.chs_info[ch_id].hx9036_input_dev);
 #endif
             } else {
                 PRINT_ERR("unknown enable symbol\n");
@@ -1385,6 +1401,9 @@ static ssize_t hx9036_channel_en_store(struct class *class, struct class_attribu
 
     if ((hx9036_pdata.channel_used_flag >> ch_id) & 0x01) {
         hx9036_ch_en_hal(ch_id, (en > 0) ? 1 : 0);
+        if ((hx9036_pdata.channel_used_flag >> (ch_id-1)) & 0x01) {
+            hx9036_ch_en_hal((ch_id-1), (en > 0) ? 1 : 0);
+        }
     } else {
         PRINT_ERR("ch_%d is unused, you can not enable or disable an unused channel\n", ch_id);
     }
@@ -2378,10 +2397,13 @@ static int hx9036_probe(struct i2c_client *client, const struct i2c_device_id *i
     }
     printk("hx9036: is_anfr_sar = false;");
 #if SAR_IN_FRANCE
-    hx9036_pdata.sar_first_boot = true;
-    is_anfr_sar = true;
-    printk("hx9036: is_anfr_sar = %d;", is_anfr_sar);
-    hx9036_pdata.user_test = 0;
+    ret = hx9036_is_anfr_board();
+    if(ret == 1){
+        hx9036_pdata.sar_first_boot = true;
+        is_anfr_sar = true;
+        printk("hx9036: is_anfr_sar = %d;", is_anfr_sar);
+        hx9036_pdata.user_test = 0;
+    }
 #endif
 // - wt Adaptive factory app, ludandan2 20230506, end
           PRINT_ERR("capsense class_register success\n");

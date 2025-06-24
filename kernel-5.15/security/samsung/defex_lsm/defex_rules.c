@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
  * Copyright (c) 2018 Samsung Electronics Co., Ltd. All Rights Reserved
  *
@@ -6,7 +7,7 @@
  * as published by the Free Software Foundation.
  */
 
-#if 0
+#ifdef __NEVER_DEFINED__
 	/* Rules start after this line */
 	{feature_ped_exception,"/system/bin/run-as"},	/* DEFAULT */
 	{feature_ped_exception,"/system/bin/dumpstate"},	/* DEFAULT */
@@ -198,20 +199,13 @@
 	{feature_safeplace_path,"/vendor/bin/hw/android.hardware.thermal@2.0-service.qti-v2"},
 	{feature_safeplace_path,"/vendor/bin/poweropt-service"},
 	{feature_safeplace_path,"/vendor/bin/msm_irqbalance"},
-	{feature_safeplace_path,"/vendor/bin/cp_diskserver"},
-	{feature_safeplace_path,"/vendor/bin/hw/android.hardware.boot-service.exynos"},
-	{feature_safeplace_path,"/system_ext/bin/mobile_log_d"},
 	{feature_safeplace_path,"/vendor/bin/thermal_manager"},
 	{feature_safeplace_path,"/vendor/bin/nvram_daemon"},
 	{feature_safeplace_path,"/vendor/bin/hw/vendor.mediatek.hardware.nvram@1.1-service"},
 	{feature_safeplace_path,"/vendor/bin/aee_aedv"},
 	{feature_safeplace_path,"/vendor/bin/aee_aedv64"},
-	{feature_safeplace_path,"/vendor/bin/dcxosetcap"},
-	{feature_safeplace_path,"/vendor/bin/frs"},
 	{feature_safeplace_path,"/vendor/bin/meta_tst"},
 	{feature_safeplace_path,"/vendor/bin/thermal_core"},
-	{feature_safeplace_path,"/vendor/bin/hw/vendor.mediatek.hardware.mtkpower-service.mediatek"},
-	{feature_safeplace_path,"/vendor/bin/hw/vendor.mediatek.hardware.nvram-service"},
 	{feature_safeplace_path,"/system/bin/oem-iptables-init.sh"},
 	{feature_safeplace_path,"/system_ext/bin/aee_aed64_v2"},
 	{feature_safeplace_path,"/system_ext/bin/aee_v2"},
@@ -220,6 +214,8 @@
 	{feature_safeplace_path,"/vendor/bin/dmabuf_dump"},
 	{feature_safeplace_path,"/vendor/bin/mrdump_tool"},
 	{feature_safeplace_path,"/vendor/bin/hw/vendor.mediatek.hardware.mtkpower@1.0-service"},
+	{feature_safeplace_path,"/vendor/bin/wifiver_info"},
+	{feature_safeplace_path,"/vendor/bin/frs"},
 	{feature_safeplace_path,"/system/bin/linkerconfig"},
 	{feature_safeplace_path,"/system/bin/snapshotctl"},
 	{feature_safeplace_path,"/system/bin/boringssl_self_test32"},
@@ -263,27 +259,11 @@
 	{feature_safeplace_path,"/system/bin/btfloader"},
 	{feature_safeplace_path,"/vendor/bin/system_dlkm_modprobe.sh"},
 	{feature_safeplace_path,"/apex/com.android.art/bin/art_boot"},
-	{feature_safeplace_path,"/system/bin/update_engine"},
-	{feature_safeplace_path,"/system/bin/otapreopt"},
-	{feature_safeplace_path,"/system/bin/otapreopt_chroot"},
-	{feature_safeplace_path,"/apex/com.android.sdkext/bin/derive_classpath"},
-	{feature_safeplace_path,"/apex/com.android.sdkext@340819010.tmp/bin/derive_classpath"},
-	{feature_safeplace_path,"/system/bin/mtectrl"},
-	{feature_safeplace_path,"/system/bin/cplogserver"},
-	{feature_safeplace_path,"/system_ext/bin/modemlog_connmgr_service"},
-	{feature_safeplace_path,"/vendor/bin/hw/vendor.unisoc.hardware.power-service"},
-	{feature_safeplace_path,"/vendor/bin/modem_control"},
-	{feature_safeplace_path,"/vendor/bin/refnotify"},
-	{feature_safeplace_path,"/vendor/bin/sprdstorageproxyd"},
-	{feature_safeplace_path,"/vendor/bin/uniber"},
 	{feature_safeplace_path,"/tmp/update_binary;updater_intermediates/updater;obj/EXECUTABLES"},
-	{feature_safeplace_path,"/tmp/update-binary;updater_intermediates/updater;obj/EXECUTABLES"},
-	{feature_safeplace_path,"/postinstall/bin/checkpoint_gc;checkpoint_gc_intermediates/checkpoint_gc;obj/EXECUTABLES"},
-	{feature_safeplace_path,"/postinstall/system/bin/otapreopt_script"},
+	{feature_safeplace_path,"/tmp/update-binary"},
 	{feature_safeplace_path,"/system/bin/install-recovery.sh"},	/* DEFAULT */
 	{feature_safeplace_path,"/vendor/bin/install-recovery.sh"},	/* DEFAULT */
 	{feature_safeplace_path,"/system/bin/bpfloader"},	/* DEFAULT */
-	{feature_safeplace_path,"/system/bin/snapuserd"},	/* DEFAULT */
 	{feature_immutable_path_write,"/vendor/bin/hw/vendor.samsung.hardware.camera.provider-service_64"},
 	{feature_immutable_path_write,"/system/"},	/* DEFAULT */
 	{feature_immutable_path_write,"/vendor/"},	/* DEFAULT */
@@ -307,6 +287,7 @@
 	{feature_immutable_src_exception,"/init"},
 	{feature_immutable_src_exception,"/system/bin/init"},
 	{feature_immutable_src_exception,"/system/bin/lshal"},
+	{feature_immutable_src_exception,"/vendor/bin/hw/android.hardware.biometrics.face@2.0-service"},
 	{feature_immutable_src_exception,"/apex/com.android.runtime/bin/crash_dump32"},	/* DEFAULT */
 	{feature_immutable_src_exception,"/apex/com.android.runtime/bin/crash_dump64"},	/* DEFAULT */
 	{feature_immutable_src_exception,"/data/local/tests/unrestricted/CtsBionicTestCases/arm64/CtsBionicTestCases"},	/* DEFAULT */
@@ -321,4 +302,4 @@
 	{feature_integrity_check,"/vendor/bin/hw/vendor.samsung.hardware.tlc.kg@1.1-service"},
 	/* Rules will be added here */
 	/* Never modify the above line. Rules will be added for buildtime */
-#endif /* if 0 */
+#endif /* __NEVER_DEFINED__ */

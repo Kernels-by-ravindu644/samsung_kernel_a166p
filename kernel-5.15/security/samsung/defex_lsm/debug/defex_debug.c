@@ -1,39 +1,46 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
  * Copyright (c) 2018 Samsung Electronics Co., Ltd. All Rights Reserved
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License version 2
  * as published by the Free Software Foundation.
-*/
+ */
 
 #include <linux/cred.h>
+#include <linux/file.h>
+#include <linux/fs.h>
 #include <linux/init.h>
 #include <linux/kernel.h>
 #include <linux/kobject.h>
-#ifdef DEFEX_LOG_BUFFER_ENABLE
+#if (defined(DEFEX_LOG_BUFFER_ENABLE) || defined(DEFEX_LOG_FILE_ENABLE))
 #include <linux/ktime.h>
 #include <linux/list.h>
 #include <linux/rculist.h>
-#endif /* DEFEX_LOG_BUFFER_ENABLE */
+#include <linux/spinlock.h>
+#endif /* DEFEX_LOG_BUFFER_ENABLE || DEFEX_LOG_FILE_ENABLE */
 #include <linux/sched.h>
 #include <linux/slab.h>
-#ifdef DEFEX_LOG_BUFFER_ENABLE
-#include <linux/spinlock.h>
-#endif /* DEFEX_LOG_BUFFER_ENABLE */
 #include <linux/string.h>
 #include <linux/sysfs.h>
+#include "include/defex_config.h"
 #include "include/defex_debug.h"
 #include "include/defex_internal.h"
 
 static int last_cmd;
 
-#ifdef DEFEX_LOG_BUFFER_ENABLE
+#if (defined(DEFEX_LOG_BUFFER_ENABLE) || defined(DEFEX_LOG_FILE_ENABLE))
 unsigned char *log_buf;
 DEFINE_SPINLOCK(log_buf_lock);
 static unsigned int log_buf_in_index, log_buf_out_index;
 static unsigned long log_buf_size, log_buf_mask;
 
-static int log_buf_init(void)
+#ifdef DEFEX_LOG_FILE_ENABLE
+static const char log_storage_file[] = "/defex_log";
+static const char log_storage_path[] = "/storage/emulated/0";
+#endif /* DEFEX_LOG_FILE_ENABLE */
+
+__visible_for_testing int log_buf_init(void)
 {
 	int ret = 0;
 
@@ -56,7 +63,7 @@ static int log_buf_init(void)
 	return ret;
 }
 
-static int log_buffer_put(const char *msg, int msg_len)
+__visible_for_testing int log_buffer_put(const char *msg, int msg_len)
 {
 	char c;
 	int avail, ret = -1;
@@ -82,7 +89,7 @@ static int log_buffer_put(const char *msg, int msg_len)
 	return ret;
 }
 
-static int log_buffer_get(char *str, int buff_size)
+__visible_for_testing int log_buffer_get(char *str, int buff_size)
 {
 	char value;
 	int index = 0;
@@ -110,45 +117,123 @@ static int log_buffer_get(char *str, int buff_size)
 
 void log_buffer_flush(void)
 {
-	char msg[MAX_LEN];
+	char msg[MAX_MSG_LEN];
 	int msg_len;
 
 	pr_info("%s== Buffer flushing begin ==", DEFEX_LOG_TAG);
 
 	do {
-		msg_len = log_buffer_get(&msg[0], MAX_LEN);
+		msg_len = log_buffer_get(&msg[0], MAX_MSG_LEN);
 		if (msg_len)
 			pr_info("%s", msg);
 	} while (msg_len);
 
 	pr_info("%s== Buffer flushing end ==", DEFEX_LOG_TAG);
 }
-#endif /* DEFEX_LOG_BUFFER_ENABLE */
+
+#ifdef DEFEX_LOG_FILE_ENABLE
+__visible_for_testing struct file *check_file_ptr(struct file *fp)
+{
+	if (IS_ERR_OR_NULL(fp) || (void *)fp < (void *)PAGE_SIZE)
+		return NULL;
+	return fp;
+}
+
+__visible_for_testing struct file *create_storage_file(const char *storage_path)
+{
+	struct file *f;
+	int l;
+	static char tmp_file[128];
+
+	l = strnlen(storage_path, sizeof(tmp_file) - 1);
+	memcpy(tmp_file, storage_path, l);
+	strscpy(tmp_file + l, log_storage_file, sizeof(tmp_file) - l);
+
+	f = local_fopen(tmp_file, O_WRONLY | O_CREAT | O_APPEND, S_IWUSR | S_IXUSR | S_IRGRP
+		| S_IWGRP | S_IROTH | S_IWOTH);
+	f = check_file_ptr(f);
+	if (IS_ERR_OR_NULL(f))
+		return NULL;
+	return f;
+}
+
+__visible_for_testing int storage_write_str(struct file *f, const char *str)
+{
+	ssize_t ret;
+	size_t to_save = strnlen(str, PATH_MAX - 1);
+
+	ret = local_fwrite(f, local_fpos(f), (void *)str, to_save);
+	return (int)ret == (int)to_save;
+}
+
+void storage_log_process(void)
+{
+	static bool is_first_block = true;
+	static unsigned long last_time;
+	unsigned long cur_time;
+	static unsigned int log_buf_store_index;
+	unsigned int to_save, buff_offset;
+	ssize_t ret = 0;
+	struct file *f;
+
+	cur_time = get_current_sec();
+	if (!last_time)
+		last_time = cur_time;
+
+	if ((cur_time - last_time) < 5)
+		return;
+
+	last_time = cur_time;
+
+	buff_offset = log_buf_in_index;
+	to_save = ((buff_offset - log_buf_store_index) & log_buf_mask);
+
+	if (!to_save && !is_first_block)
+		return;
+
+	f = create_storage_file(log_storage_path);
+	if (IS_ERR_OR_NULL(f))
+		return;
+
+	if (is_first_block) {
+		if (storage_write_str(f, "\n=== BOOT START ===\n"))
+			is_first_block = false;
+		else {
+			filp_close(f, NULL);
+			return;
+		}
+	}
+
+	if (to_save)
+		ret = local_fwrite(f, local_fpos(f), (void *)(log_buf + log_buf_store_index),
+			to_save);
+	filp_close(f, NULL);
+	if (ret > 0)
+		log_buf_store_index = (log_buf_store_index + (unsigned int)ret) & log_buf_mask;
+}
+#endif /* DEFEX_LOG_FILE_ENABLE */
+
+#endif /* DEFEX_LOG_BUFFER_ENABLE || DEFEX_LOG_FILE_ENABLE */
 
 void defex_print_msg(const enum defex_log_level msg_type, const char *format, ...)
 {
-	char msg[MAX_LEN];
+	char msg[MAX_MSG_LEN];
 	int msg_len, ktime_msg_len = 0;
 	va_list aptr;
 	static const char header[] = DEFEX_LOG_TAG;
 
-#ifdef DEFEX_LOG_BUFFER_ENABLE
+#if (defined(DEFEX_LOG_BUFFER_ENABLE) || defined(DEFEX_LOG_FILE_ENABLE))
 	if ((msg_type != MSG_TIMEOFF) && (msg_type != MSG_BLOB)) {
 		ktime_t cur_time = ktime_get_boottime();
 
-		ktime_msg_len = snprintf(msg, MAX_LEN,
+		ktime_msg_len = snprintf(msg, MAX_MSG_LEN,
 			"[% 4lld.%04lld] ", cur_time/1000000000, (cur_time%1000000000)/100000);
 	}
-#endif /* DEFEX_LOG_BUFFER_ENABLE */
+#endif /* DEFEX_LOG_BUFFER_ENABLE || DEFEX_LOG_FILE_ENABLE */
 
 	va_start(aptr, format);
-	msg_len = vsnprintf(msg + ktime_msg_len, MAX_LEN - ktime_msg_len, format, aptr);
+	msg_len = vsnprintf(msg + ktime_msg_len, MAX_MSG_LEN - ktime_msg_len, format, aptr);
 	va_end(aptr);
-#ifdef DEFEX_LOG_BUFFER_ENABLE
-	if (DEFEX_LOG_LEVEL_MASK & msg_type)
-		if (!log_buffer_put(msg, msg_len + ktime_msg_len))
-			return;
-#endif /* DEFEX_LOG_BUFFER_ENABLE */
 	switch (msg_type) {
 	case MSG_CRIT:
 		pr_crit("%s%s\n", header, msg + ktime_msg_len);
@@ -170,6 +255,11 @@ void defex_print_msg(const enum defex_log_level msg_type, const char *format, ..
 		pr_crit("%s\n", msg + ktime_msg_len);
 		break;
 	}
+#if (defined(DEFEX_LOG_BUFFER_ENABLE) || defined(DEFEX_LOG_FILE_ENABLE))
+	if (DEFEX_LOG_LEVEL_MASK & msg_type)
+		if (!log_buffer_put(msg, msg_len + ktime_msg_len))
+			return;
+#endif /* DEFEX_LOG_BUFFER_ENABLE */
 }
 
 void blob(const char *title, const char *buffer, const size_t bufLen, const int lineSize)
@@ -184,25 +274,29 @@ void blob(const char *title, const char *buffer, const size_t bufLen, const int 
 	do {
 		line = (len > lineSize)?lineSize:len;
 		offset  = 0;
-		offset += snprintf(stringToPrint + offset, MAX_DATA_LEN - offset, "| 0x%08lX | ", i);
+		offset += snprintf(stringToPrint + offset, MAX_DATA_LEN - offset,
+			"| 0x%08lX | ", i);
 
 		for (j = 0; j < line; j++)
 			offset += snprintf(stringToPrint + offset, MAX_DATA_LEN - offset, "%02X ",
 							   (unsigned char)buffer[i + j]);
 		if (line < lineSize) {
 			for (j = 0; j < lineSize - line; j++)
-				offset += snprintf(stringToPrint + offset, MAX_DATA_LEN - offset, "   ");
+				offset += snprintf(stringToPrint + offset, MAX_DATA_LEN - offset,
+					"   ");
 		}
 		offset += snprintf(stringToPrint + offset, MAX_DATA_LEN - offset, "| ");
 
 		for (j = 0; j < line; j++) {
 			c = buffer[i + j];
 			c = (c < 0x20) || (c >= 0x7F)?'.':c;
-			offset += snprintf(stringToPrint + offset, MAX_DATA_LEN - offset, "%c", c);
+			offset += snprintf(stringToPrint + offset, MAX_DATA_LEN - offset,
+				"%c", c);
 		}
 		if (line < lineSize) {
 			for (j = 0; j < lineSize - line; j++)
-				offset += snprintf(stringToPrint + offset, MAX_DATA_LEN - offset, " ");
+				offset += snprintf(stringToPrint + offset, MAX_DATA_LEN - offset,
+					" ");
 		}
 
 		snprintf(stringToPrint + offset, MAX_DATA_LEN - offset, " |");
@@ -280,13 +374,42 @@ do_abort:
 	return -EPERM;
 }
 
-__visible_for_testing ssize_t debug_store(struct kobject *kobj, struct kobj_attribute *attr, const char *buf, size_t count)
+__visible_for_testing int set_feature_status(const char *status_str,
+				unsigned int feature, unsigned int feature_soft)
+{
+	unsigned int status;
+	unsigned int current_features;
+
+	if (!status_str)
+		return -EINVAL;
+
+	if (kstrtouint(status_str, 10, &status))
+		return -EINVAL;
+
+	if (status > 2)
+		return -EINVAL;
+
+	current_features = defex_get_features();
+
+	current_features &= ~(feature | feature_soft);
+
+	if (status == 1)
+		current_features |= feature;
+	if (status == 2)
+		current_features |= (feature | feature_soft);
+
+	defex_set_features(current_features);
+	return 0;
+}
+
+__visible_for_testing ssize_t debug_store(struct kobject *kobj, struct kobj_attribute *attr,
+			const char *buf, size_t count)
 {
 	struct task_struct *p = current;
 	int i, l, new_val = -1;
 	int ret = 0;
 
-	static const char *prefix[] = {
+	static const char * const prefix[] = {
 		"uid=",
 		"fsuid=",
 		"gid=",
@@ -294,18 +417,20 @@ __visible_for_testing ssize_t debug_store(struct kobject *kobj, struct kobj_attr
 		"im_status=",
 		"sp_status=",
 		"int_status=",
-		"get_log"
+		"imr_status=",
+		"get_log",
+		"get_features"
 	};
 
 	if (!buf || !p)
 		return -EINVAL;
 
-	for (i = 0; i < sizeof(prefix) / sizeof(prefix[0]); i++) {
+	for (i = 0; i < ARRAY_SIZE(prefix); i++) {
 		l = strlen(prefix[i]);
 		if (!strncmp(buf, prefix[i], l))
 			break;
 	}
-	if (i == (sizeof(prefix) / sizeof(prefix[0])))
+	if (i == ARRAY_SIZE(prefix))
 		return -EINVAL;
 
 	switch (i) {
@@ -317,25 +442,32 @@ __visible_for_testing ssize_t debug_store(struct kobject *kobj, struct kobj_attr
 		break;
 	case DBG_SET_PE_STATUS:
 #ifdef DEFEX_PED_ENABLE
-		privesc_status_store(buf + l);
+		ret = set_feature_status(buf + l, FEATURE_CHECK_CREDS, FEATURE_CHECK_CREDS_SOFT);
 #endif /* DEFEX_PED_ENABLE */
 		break;
 	case DBG_SET_IM_STATUS:
 #ifdef DEFEX_IMMUTABLE_ENABLE
-		immutable_status_store(buf + l);
+		ret = set_feature_status(buf + l, FEATURE_IMMUTABLE, FEATURE_IMMUTABLE_SOFT);
 #endif /* DEFEX_IMMUTABLE_ENABLE */
+		break;
+	case DBG_SET_IMR_STATUS:
+#ifdef DEFEX_IMMUTABLE_ROOT_ENABLE
+		ret = set_feature_status(buf + l,
+			FEATURE_IMMUTABLE_ROOT, FEATURE_IMMUTABLE_ROOT_SOFT);
+#endif /* DEFEX_IMMUTABLE_ROOT_ENABLE */
 		break;
 	case DBG_SET_SP_STATUS:
 #ifdef DEFEX_SAFEPLACE_ENABLE
-		safeplace_status_store(buf + l);
+		ret = set_feature_status(buf + l, FEATURE_SAFEPLACE, FEATURE_SAFEPLACE_SOFT);
 #endif /* DEFEX_SAFEPLACE_ENABLE */
 		break;
 	case DBG_SET_INT_STATUS:
 #ifdef DEFEX_INTEGRITY_ENABLE
-		integrity_status_store(buf + l);
+		ret = set_feature_status(buf + l, FEATURE_INTEGRITY, FEATURE_INTEGRITY_SOFT);
 #endif /* DEFEX_INTEGRITY_ENABLE */
 		break;
 	case DBG_GET_LOG:
+	case DBG_GET_FEATURES:
 		break;
 	default:
 		break;
@@ -345,7 +477,8 @@ __visible_for_testing ssize_t debug_store(struct kobject *kobj, struct kobj_attr
 	return (!ret)?count:ret;
 }
 
-__visible_for_testing ssize_t debug_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf)
+__visible_for_testing ssize_t debug_show(struct kobject *kobj, struct kobj_attribute *attr,
+			char *buf)
 {
 	struct task_struct *p = current;
 	int res = 0;
@@ -358,7 +491,7 @@ __visible_for_testing ssize_t debug_show(struct kobject *kobj, struct kobj_attri
 
 	switch (last_cmd) {
 	case DBG_SETUID ... DBG_SETGID:
-		res = snprintf(buf, MAX_LEN + 1, "pid=%d\nuid=%d\ngid=%d\neuid=%d\negid=%d\n",
+		res = snprintf(buf, MAX_MSG_LEN + 1, "pid=%d\nuid=%d\ngid=%d\neuid=%d\negid=%d\n",
 			p->pid,
 			uid_get_value(p->cred->uid),
 			uid_get_value(p->cred->gid),
@@ -372,22 +505,27 @@ __visible_for_testing ssize_t debug_show(struct kobject *kobj, struct kobj_attri
 			msg_len = log_buffer_get(&buf[res], buff_size);
 			res += msg_len;
 			buff_size -= msg_len;
-		} while (msg_len && buff_size >= MAX_LEN);
+		} while (msg_len && buff_size >= MAX_MSG_LEN);
 		if (!msg_len)
 			res += snprintf(&buf[res], buff_size, "=== EOF ===\n");
 		else
 			res += snprintf(&buf[res], buff_size, "=== %lu bytes left ===\n",
-				(unsigned long)(log_buf_in_index - log_buf_out_index) & DEFEX_LOG_BUF_MASK);
+				(unsigned long)(log_buf_in_index - log_buf_out_index)
+				& DEFEX_LOG_BUF_MASK);
 #else
-		res = snprintf(buf, MAX_LEN + 1, "Log buffer disabled...\n");
+		res = snprintf(buf, MAX_MSG_LEN + 1, "Log buffer disabled...\n");
 #endif /* DEFEX_LOG_BUFFER_ENABLE */
+		break;
+	case DBG_GET_FEATURES:
+		res = snprintf(buf, MAX_MSG_LEN + 1, "%d\n", defex_get_features());
 		break;
 	}
 
 	return res;
 }
 
-__visible_for_testing struct kobj_attribute debug_attribute = __ATTR(debug, 0660, debug_show, debug_store);
+__visible_for_testing struct kobj_attribute debug_attribute = __ATTR(debug, 0660,
+			debug_show, debug_store);
 
 int defex_create_debug(struct kset *defex_kset)
 {
@@ -402,10 +540,11 @@ int defex_create_debug(struct kset *defex_kset)
 #endif /* DEFEX_LOG_BUFFER_ENABLE */
 	last_cmd = DBG_GET_LOG;
 
-	retval = sysfs_create_file(&defex_kset->kobj, &debug_attribute.attr);
-	if (retval)
-		return DEFEX_NOK;
-
-	kobject_uevent(&defex_kset->kobj, KOBJ_ADD);
+	if (defex_kset) {
+		retval = sysfs_create_file(&defex_kset->kobj, &debug_attribute.attr);
+		if (retval)
+			return DEFEX_NOK;
+		kobject_uevent(&defex_kset->kobj, KOBJ_ADD);
+	}
 	return DEFEX_OK;
 }

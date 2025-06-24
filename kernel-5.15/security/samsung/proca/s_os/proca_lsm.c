@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
  * PROCA LSM module
  *
@@ -74,9 +75,8 @@ static struct five_hook_list five_ops[] = {
 	FIVE_HOOK_INIT(file_skipped, proca_hook_file_skipped),
 	FIVE_HOOK_INIT(integrity_reset2, proca_hook_reset_integrity),
 };
-
-static struct proca_table g_proca_table;
-struct proca_config g_proca_config;
+static struct proca_table *g_proca_table;
+struct proca_config *g_proca_config;
 static dev_t proca_dev;
 static struct cdev proca_cdev;
 static struct class *proca_class;
@@ -101,8 +101,12 @@ static struct proca_task_descr *prepare_proca_task_descr(
 				    &parsed_cert))
 		goto cert_buff_cleanup;
 
-	if (!is_certificate_relevant_to_task(&parsed_cert, task))
+	if (!is_certificate_relevant_to_task(&parsed_cert, task)) {
+		PROCA_DEBUG_LOG(
+			"Certificate %s doesn't relate to task.\n",
+			parsed_cert.app_name);
 		goto proca_cert_cleanup;
+	}
 
 	PROCA_DEBUG_LOG("PROCA certificate was found for task %d\n",
 			task->pid);
@@ -177,14 +181,14 @@ static void proca_hook_file_processed(struct task_struct *task,
 	if (task->flags & PF_KTHREAD)
 		return;
 
-	target_task_descr = proca_table_get_by_task(&g_proca_table, task);
+	target_task_descr = proca_table_get_by_task(g_proca_table, task);
 	if (target_task_descr &&
 		is_bprm(task, target_task_descr->proca_identity.file, file)) {
 		PROCA_DEBUG_LOG(
 			"Task descr for task %d already exists before exec\n",
 			task->pid);
 
-		proca_table_remove_task_descr(&g_proca_table,
+		proca_table_remove_task_descr(g_proca_table,
 					      target_task_descr);
 		destroy_proca_task_descr(target_task_descr);
 		target_task_descr = NULL;
@@ -194,7 +198,7 @@ static void proca_hook_file_processed(struct task_struct *task,
 		target_task_descr = prepare_proca_task_descr(
 						task, file, tint_value);
 		if (target_task_descr)
-			proca_table_add_task_descr(&g_proca_table,
+			proca_table_add_task_descr(g_proca_table,
 						target_task_descr);
 	}
 }
@@ -237,7 +241,7 @@ static void proca_hook_task_forked(struct task_struct *parent,
 	if (!parent || !child)
 		return;
 
-	target_task_descr = proca_table_get_by_task(&g_proca_table, parent);
+	target_task_descr = proca_table_get_by_task(g_proca_table, parent);
 	if (!target_task_descr)
 		return;
 
@@ -253,14 +257,14 @@ static void proca_hook_task_forked(struct task_struct *parent,
 		return;
 	}
 
-	proca_table_add_task_descr(&g_proca_table, target_task_descr);
+	proca_table_add_task_descr(g_proca_table, target_task_descr);
 }
 
 static void proca_task_free_hook(struct task_struct *task)
 {
 	struct proca_task_descr *target_task_descr = NULL;
 
-	target_task_descr = proca_table_remove_by_task(&g_proca_table, task);
+	target_task_descr = proca_table_remove_by_task(g_proca_table, task);
 
 	destroy_proca_task_descr(target_task_descr);
 }
@@ -269,7 +273,7 @@ static void proca_hook_reset_integrity(struct task_struct *task,
 			struct file *file,
 			enum task_integrity_reset_cause cause)
 {
-	if (proca_table_get_by_task(&g_proca_table, task))
+	if (proca_table_get_by_task(g_proca_table, task))
 		proca_audit_err(task, file, "proca_reset_integrity",
 				task_integrity_reset_str(cause));
 }
@@ -289,9 +293,9 @@ int proca_get_task_cert(const struct task_struct *task,
 {
 	struct proca_task_descr *task_descr = NULL;
 
-	BUG_ON(!task || !cert || !cert_size);
+	PROCA_BUG_ON(!task || !cert || !cert_size);
 
-	task_descr = proca_table_get_by_task(&g_proca_table, task);
+	task_descr = proca_table_get_by_task(g_proca_table, task);
 	if (!task_descr)
 		return -ESRCH;
 
@@ -303,9 +307,9 @@ int proca_get_task_cert(const struct task_struct *task,
 static ssize_t proca_cdev_read(struct file *filp, char __user *buf, size_t count,
 			loff_t *f_pos)
 {
-	phys_addr_t p = virt_to_phys(&g_proca_config);
+	phys_addr_t p = virt_to_phys(g_proca_config);
 
-	if (!proca_table_get_by_task(&g_proca_table, current) ||
+	if (!proca_table_get_by_task(g_proca_table, current) ||
 		!task_integrity_user_read(TASK_INTEGRITY(current))) {
 		PROCA_ERROR_LOG("Access to config is restricted.\n");
 		return -EPERM;
@@ -361,23 +365,40 @@ static __init int proca_module_init(void)
 {
 	int ret;
 
-	ret = init_proca_config(&g_proca_config, &g_proca_table);
+	struct page *pages = alloc_pages(GFP_KERNEL | __GFP_ZERO, get_order(PAGE_SIZE * 2));
+	if (!pages) {
+		PROCA_ERROR_LOG("Failed to allocate memory for g_proca_config\n");
+		return -ENOMEM;
+	}
+
+	g_proca_config = page_address(pages);
+
+	g_proca_table = kzalloc(sizeof(*g_proca_table), GFP_KERNEL);
+	if (unlikely(!g_proca_table)) {
+		__free_pages(pages, get_order(PAGE_SIZE * 2));
+		PROCA_ERROR_LOG("Cannot allocate table\n");
+		return -ENOMEM;
+	}
+
+	ret = init_proca_config(g_proca_config, g_proca_table);
 	if (ret)
-		return ret;
+		goto out;
 
 	ret = init_proca_config_device();
 	if (ret)
-		return ret;
+		goto out;
 
 	ret = init_certificate_validation_hash();
 	if (ret)
-		return ret;
+		goto out;
 
-	proca_table_init(&g_proca_table);
+	ret = proca_table_init(g_proca_table);
+	if (ret)
+		goto out;
 
 	ret = init_proca_storage();
 	if (ret)
-		return ret;
+		goto out;
 
 	security_add_hooks(proca_ops, ARRAY_SIZE(proca_ops), "proca_lsm");
 	five_add_hooks(five_ops, ARRAY_SIZE(five_ops));
@@ -386,6 +407,11 @@ static __init int proca_module_init(void)
 	g_proca_inited = 1;
 
 	return 0;
+
+out:
+	kfree(g_proca_table);
+	__free_pages(pages, get_order(PAGE_SIZE * 2));
+	return ret;
 }
 late_initcall(proca_module_init);
 

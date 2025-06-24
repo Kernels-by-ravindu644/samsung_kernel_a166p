@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
  * Copyright (c) 2018 Samsung Electronics Co., Ltd. All Rights Reserved
  *
@@ -48,5 +49,3 @@ kset_error:
 
 	return -ENOMEM;
 }
-
-

@@ -288,6 +288,16 @@ void nicEventCSIData(struct ADAPTER *prAdapter,
 		(ucLastTagFlg == false)) {
 		prCSITlvData = (struct CSI_TLV_ELEMENT *) prBuf;
 
+		if (prCSITlvData->body_len >
+			(i4EventLen - (int32_t) u2Offset)) {
+			DBGLOG(NIC, WARN,
+				"[CSI] Invalid body_len: %u, tag_type=%u\n",
+				prCSITlvData->body_len,
+				prCSITlvData->tag_type);
+			goto out;
+		}
+
+
 #if CFG_CSI_DEBUG
 		DBGLOG(NIC, TRACE, "[CSI] tag_type=%d, body_len=%d\n",
 			prCSITlvData->tag_type, prCSITlvData->body_len);

@@ -1003,8 +1003,19 @@ void cnmChMngrHandleChEvent(struct ADAPTER *prAdapter,
 	       prAdapter->ucHwBssIdNum);
 	ASSERT(prEventBody->ucStatus == EVENT_CH_STATUS_GRANT);
 
+	if (prEventBody->ucBssIndex >= ARRAY_SIZE(prAdapter->aprBssInfo)) {
+		DBGLOG(CNM, ERROR, "ucBssIndex out of range %u!\n",
+			prEventBody->ucBssIndex);
+		return;
+	}
+
 	prBssInfo =
 		prAdapter->aprBssInfo[prEventBody->ucBssIndex];
+
+	if (!prBssInfo) {
+		DBGLOG(CNM, ERROR, "prBssInfo is NULL\n");
+		return;
+	}
 
 	/* Decide message ID based on network and response status */
 	if (IS_BSS_AIS(prBssInfo))

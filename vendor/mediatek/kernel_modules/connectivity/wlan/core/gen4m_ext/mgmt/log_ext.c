@@ -166,7 +166,7 @@ enum ENUM_EAP_CODE {
 	(((seq) & (~(BIT(3) | BIT(2) | BIT(1) | BIT(0)))) >> 4)
 #endif
 #ifndef WPA_KEY_INFO_KEY_TYPE
-#define WPA_KEY_INFO_KEY_TYPE BIT(3) /* 1 = PairwSd7ise, 0 = Group key */
+#define WPA_KEY_INFO_KEY_TYPE BIT(3) /* 1 = Pairwise, 0 = Group key */
 #endif
 /* bit4..5 is used in WPA, but is reserved in IEEE 802.11i/RSN */
 #ifndef WPA_KEY_INFO_KEY_INDEX_MASK
@@ -189,6 +189,10 @@ enum ENUM_EAP_CODE {
 /* struct wpa_eapol_key in wpa_supplicant */
 #define wpa_eapol_key_key_info_offset 1
 #endif
+#ifndef wpa_eapol_key_nonce_info_offset
+/* struct wpa_eapol_key in wpa_supplicant */
+#define wpa_eapol_key_nonce_info_offset 13
+#endif /* wpa_eapol_key_nonce_info_offset */
 #ifndef wpa_eapol_key_fixed_field_size
 #define wpa_eapol_key_fixed_field_size 77
 #endif
@@ -1189,8 +1193,7 @@ void connLogEapKey(
 #if (CFG_EXT_VERSION == 1)
 	struct CONNECTION_SETTINGS *prConnSettings;
 
-	prConnSettings =
-		aisGetConnSettings(prAdapter, ucBssIndex);
+	prConnSettings = aisGetConnSettings(prAdapter, ucBssIndex);
 	if (prConnSettings) {
 		mic_len = wpa_mic_len(
 		prConnSettings->rRsnInfo.au4AuthKeyMgtSuite[0]);
@@ -1200,8 +1203,7 @@ void connLogEapKey(
 #else
 	struct BSS_INFO *prBssInfo = NULL;
 
-	prBssInfo =
-		GET_BSS_INFO_BY_INDEX(prAdapter, ucBssIndex);
+	prBssInfo = GET_BSS_INFO_BY_INDEX(prAdapter, ucBssIndex);
 	if (prBssInfo) {
 		mic_len = wpa_mic_len(
 		prBssInfo->u4RsnSelectedAKMSuite);
@@ -1209,6 +1211,9 @@ void connLogEapKey(
 			prBssInfo->u4RsnSelectedAKMSuite;
 	}
 #endif
+
+	if (!IS_BSS_INDEX_AIS(prAdapter, ucBssIndex))
+		return;
 
 	WLAN_GET_FIELD_BE16(&pucEapol[
 		ieee802_1x_hdr_size
@@ -1228,100 +1233,45 @@ void connLogEapKey(
 		mic_len, key_data_len_offset);
 #endif
 
+	if (u2KeyInfo & WPA_KEY_INFO_KEY_TYPE)
+		isPairwise = TRUE;
+	else
+		isPairwise = FALSE;
+
 	switch (eventType) {
 	case EVENT_RX:
-		if (u2KeyInfo & WPA_KEY_INFO_KEY_TYPE) {
-			if (u2KeyInfo
-				& WPA_KEY_INFO_KEY_INDEX_MASK)
-				DBGLOG(RX, WARN,
-					"WPA: ignore EAPOL-key (pairwise) with non-zero key index");
+		if (u2KeyInfo & WPA_KEY_INFO_KEY_INDEX_MASK)
+			DBGLOG(RX, WARN,
+				"WPA: ignore EAPOL-key (pairwise) with non-zero key index\n");
 
-			if (u2KeyInfo &
-				(WPA_KEY_INFO_MIC
-				| WPA_KEY_INFO_ENCR_KEY_DATA)) {
-				m = 3;
-				isPairwise = TRUE;
-			} else {
-				m = 1;
-				isPairwise = TRUE;
-			}
-#ifdef DBG_CONN_LOG_EAP
-			DBGLOG(RX, INFO,
-				"<RX> EAPOL: key, M%d, KeyInfo 0x%04x KeyDataLen %d\n",
-				m, u2KeyInfo, u2KeyDataLen);
-#endif
-		} else {
-			if ((mic_len &&
-					(u2KeyInfo
-				& WPA_KEY_INFO_MIC)) ||
-				(!mic_len &&
-					(u2KeyInfo
-				& WPA_KEY_INFO_ENCR_KEY_DATA)
-				)) {
-				m = 1;
-				isPairwise = FALSE;
-			} else {
-				isPairwise = FALSE;
-#ifdef DBG_CONN_LOG_EAP
-				DBGLOG(RX, WARN,
-					"WPA: EAPOL-Key (Group) without Mic/Encr bit");
-#endif
-			}
-#ifdef DBG_CONN_LOG_EAP
-			DBGLOG(RX, INFO,
-				"<RX> EAPOL: group key, M%d, KeyInfo 0x%04x KeyDataLen %d\n",
-				m, u2KeyInfo, u2KeyDataLen);
-#endif
-		}
+		if ((u2KeyInfo & WPA_KEY_INFO_INSTALL) &&
+		    (u2KeyInfo & WPA_KEY_INFO_ACK))
+			m = 3;
+		else
+			m = 1;
 
 		if (isPairwise)
-			kalSprintf(log,
-				"[EAPOL] 4WAY M%d", m);
+			kalSprintf(log, "[EAPOL] 4WAY M%d rx", m);
 		else
-			kalSprintf(log,
-				"[EAPOL] GTK M%d", m);
+			kalSprintf(log, "[EAPOL] GTK M1 rx");
+
 		kalReportWifiLog(prAdapter, ucBssIndex, log);
 
 		break;
 	case EVENT_TX:
-		if (!(u2KeyInfo & WPA_KEY_INFO_KEY_TYPE)) {
+		if (!(u2KeyInfo & WPA_KEY_INFO_SECURE) &&
+			 rsnHasNonce(&pucEapol[ieee802_1x_hdr_size +
+			 		wpa_eapol_key_nonce_info_offset]))
 			m = 2;
-			isPairwise = FALSE;
-#ifdef DBG_CONN_LOG_EAP
-			DBGLOG(RX, INFO,
-				"<TX> EAPOL: group key, M%d, KeyInfo 0x%04x KeyDataLen %d\n",
-				m, u2KeyInfo, u2KeyDataLen);
-#endif
-		} else if (u2KeyDataLen == 0 ||
-			(mic_len == 0 &&
-			(u2KeyInfo
-			& WPA_KEY_INFO_ENCR_KEY_DATA) &&
-			u2KeyDataLen == AES_BLOCK_SIZE)) {
+		else
 			m = 4;
-			isPairwise = TRUE;
-#ifdef DBG_CONN_LOG_EAP
-			DBGLOG(RX, INFO,
-				"<TX> EAPOL: key, M%d, KeyInfo 0x%04x KeyDataLen %d\n",
-				m, u2KeyInfo, u2KeyDataLen);
-#endif
-		} else {
-			m = 2;
-			isPairwise = TRUE;
-#ifdef DBG_CONN_LOG_EAP
-			DBGLOG(RX, INFO,
-				"<TX> EAPOL: key, M%d, KeyInfo 0x%04x KeyDataLen %d\n",
-				m, u2KeyInfo, u2KeyDataLen);
-#endif
-		}
 
 		if (isPairwise)
-			kalSprintf(log,
-				"[EAPOL] 4WAY M%d", m);
+			kalSprintf(log, "[EAPOL] 4WAY M%d", m);
 		else
-			kalSprintf(log,
-				"[EAPOL] GTK M%d", m);
-		kalBufferWifiLog(prAdapter, ucBssIndex, log,
-			ucSn);
+			kalSprintf(log, "[EAPOL] GTK M2");
+
+		kalBufferWifiLog(prAdapter, ucBssIndex, log, ucSn);
 
 		break;
 	}

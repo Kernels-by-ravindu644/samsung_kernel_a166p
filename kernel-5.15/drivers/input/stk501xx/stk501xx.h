@@ -47,7 +47,7 @@
 #define SAR_IN_FRANCE 1
 #endif
 
-#if SAR_IN_FRANCE
+#ifdef SAR_IN_FRANCE
     #define CH0_FADC_DIFF -900
     #define CH1_FADC_DIFF -530
     #define CH2_FADC_DIFF -1600
@@ -352,12 +352,12 @@ enum
 
 //Threshold fill in delta decimal value
 #define STK_SAR_THD_0                       50000
-#define STK_SAR_THD_1                       400   //0830 add
+#define STK_SAR_THD_1                       1000   //1007 add
 #define STK_SAR_THD_2                       50000
-#define STK_SAR_THD_3                       1200  //0830 add
+#define STK_SAR_THD_3                       2500   //1007 add
 #define STK_SAR_THD_4                       50000
-#define STK_SAR_THD_5                       1000  //0830 add
-#define STK_SAR_THD_6                       850   //0902 add
+#define STK_SAR_THD_5                       2300   //1007 add
+#define STK_SAR_THD_6                       1200   //1007 add
 #define STK_SAR_THD_7                       50000
 
 #define STK_CADC_DIFF                       30
@@ -582,7 +582,7 @@ typedef enum
 #define STK_SCAN_OPT_PH1_VALUE                  0x00000000
 #define STK_TX_CTRL_PH1_VALUE                   0x07000B0B  //TX=66.67KHz , res 1024//0830 add
 #define STK_SENS_CTRL_PH1_VALUE                 0x10004003
-#define STK_FILT_CFG_PH1_VALUE                  0x00000113  // raw filter=1/8//0830 add
+#define STK_FILT_CFG_PH1_VALUE                  0x00000123  // raw filter=1/8//1007 add
 #define STK_CORRECTION_PH1_VALUE                0x08C09F16  //0620 add
 #define STK_NOISE_DECT_PH1_VALUE                0x00000004
 #define STK_CADC_OPT0_PH1_VALUE                 0x00060000
@@ -629,7 +629,7 @@ typedef enum
 #define STK_TX_CTRL_PH3_VALUE                   0x07000B0B  //TX=66.67KHz , res 1024//0830 add
 
 #define STK_SENS_CTRL_PH3_VALUE                 0x10004003
-#define STK_FILT_CFG_PH3_VALUE                  0x00000112  // raw filter=1/4//0830 add
+#define STK_FILT_CFG_PH3_VALUE                  0x00000122  // raw filter=1/4//1007 add
 #define STK_CORRECTION_PH3_VALUE                0x0F314015  //0620 add
 #define STK_NOISE_DECT_PH3_VALUE                0x00000004
 #define STK_CADC_OPT0_PH3_VALUE                 0x00060000
@@ -676,7 +676,7 @@ typedef enum
 #define STK_TX_CTRL_PH5_VALUE                   0x07000B0B  //TX=66.67KHz , res 1024//0830 add
 
 #define STK_SENS_CTRL_PH5_VALUE                 0x10004003
-#define STK_FILT_CFG_PH5_VALUE                  0x00000112  // raw filter=1/4//0830 add
+#define STK_FILT_CFG_PH5_VALUE                  0x00000122  // raw filter=1/4//1007 add
 #define STK_CORRECTION_PH5_VALUE                0x07307A14  //0620 add
 #define STK_NOISE_DECT_PH5_VALUE                0x00000004
 #define STK_CADC_OPT0_PH5_VALUE                 0x00060000
@@ -699,7 +699,7 @@ typedef enum
 #define STK_SCAN_OPT_PH6_VALUE                  0x00000000
 #define STK_TX_CTRL_PH6_VALUE                   0x07000B0B  //TX=66.67 KHz , res 1024//0830 add
 #define STK_SENS_CTRL_PH6_VALUE                 0x10004003
-#define STK_FILT_CFG_PH6_VALUE                  0x00000112  // raw filter=1/4//0830 add
+#define STK_FILT_CFG_PH6_VALUE                  0x00000122  // raw filter=1/4//1007 add
 #define STK_CORRECTION_PH6_VALUE                0x08007D14  //0620 add
 #define STK_NOISE_DECT_PH6_VALUE                0x00000004
 #define STK_CADC_OPT0_PH6_VALUE                 0x00060000
@@ -816,7 +816,7 @@ struct stk_data
     stk_sar_nearby_type             last_nearby[8];
     uint8_t                         grip_status[ch_num];
     uint8_t                         ch_status[ch_num]; //grip, grip, sub, wifi
-#if SAR_IN_FRANCE
+#ifdef SAR_IN_FRANCE
     int32_t                         sar_first_fadc[ch_num]; //grip, grip, sub, wifi
     uint16_t                        cadc_weight;
 #endif

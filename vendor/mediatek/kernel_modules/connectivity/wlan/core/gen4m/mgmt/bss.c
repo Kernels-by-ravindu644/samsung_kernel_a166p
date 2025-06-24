@@ -1425,8 +1425,8 @@ bssSendBeaconProbeResponse(struct ADAPTER *prAdapter,
 				((uintptr_t)
 				(prMsduInfo->prPacket) + MAC_TX_RESERVED_FIELD),
 				pucDestAddr,
-				prAdapter->rWifiVar.aucDeviceAddress,
-				prAdapter->rWifiVar.aucDeviceAddress,
+				prAdapter->rWifiVar.aucP2pDevAddr[0],
+				prAdapter->rWifiVar.aucP2pDevAddr[0],
 				DOT11_BEACON_PERIOD_DEFAULT,
 				(prBssInfo->u2CapInfo & ~(CAP_INFO_ESS
 							   | CAP_INFO_IBSS)));

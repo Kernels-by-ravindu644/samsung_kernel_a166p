@@ -89,9 +89,9 @@ config USB_HOST_SAMSUNG_FEATURE
 	 use this feature,
 
 config USB_HW_PARAM
-    	bool "USB H/W Parameter"
-    	depends on USB_NOTIFY_LAYER
-    	help
+	bool "USB H/W Parameter"
+	depends on USB_NOTIFY_LAYER
+	help
 	 Added USB H/W Parameter for DQA Agent.
 	 You need more works for USB PDIC driver.
 	 It is made by samsung.
@@ -134,3 +134,39 @@ config USB_HOST_CERTI
 	 uevent includes information of notification
 	 The usb framework gets this uevent.
 	 It is made by samsung.
+
+config USB_AUDIO_POWER_SAVING
+	bool "Use function saving power with VBUS provided to USB audio"
+	default n
+	help
+	 If you want to use functionality to save power
+	 for specific USB earphone,
+	 enable this feature.
+	 It is made by samsung.
+
+config USB_USING_ADVANCED_USBLOG
+	bool "Use advanced usb log logic"
+	default n
+	help
+	 If you want to use advanced usb log, enable this feature.
+	 you can use printk_usb saved specific buffer.
+	 and can use store_tcpc_name
+	 This is new feature by usb notify layer v4.0
+
+config USB_LPM_CHARGING_SYNC
+	bool "LPM charging type sync"
+	depends on USB_NOTIFY_LAYER
+	help
+	 There is a requirement that LPM animation confirm
+	 the final charging method and show it only once.
+	 It is a function that syncs with the driver stage through sysfs
+	 to let the LPM know the final charging type.
+
+config DISABLE_LOCKSCREEN_USB_RESTRICTION
+	bool "disable usb restriction during lockscreen"
+	depends on USB_NOTIFY_LAYER
+	help
+	 Restricting the usb function on the lock screen is a concept applied for usb security
+	 it has been applied since v os (oneui 7.0) or higher
+	 This feature is to avoid applying the concept.
+	 Enable this feature to enable usb communication on the lock screen.

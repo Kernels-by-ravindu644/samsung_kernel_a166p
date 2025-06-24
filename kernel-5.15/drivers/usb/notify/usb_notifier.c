@@ -1,6 +1,7 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
- * Copyright (C) 2011 Samsung Electronics Co. Ltd.
- *  Inchul Im <inchul.im@samsung.com>
+ * Copyright (C) 2011-2023 Samsung Electronics Co. Ltd.
+ * Samsung USB members
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -14,12 +15,12 @@
 #include <linux/usb/role.h>
 #include <linux/regulator/consumer.h>
 #include <linux/workqueue.h>
-#include <linux/usb_notify.h>
-
 #ifdef CONFIG_OF
 #include <linux/of_device.h>
 #include <linux/of_gpio.h>
 #endif
+#include <linux/usb_notify.h>
+
 #if IS_ENABLED(CONFIG_PDIC_NOTIFIER)
 #include <linux/usb/typec/common/pdic_notifier.h>
 #endif
@@ -40,11 +41,11 @@
 #elif defined(CONFIG_BATTERY_SAMSUNG)
 #include "../../../battery/common/sec_charging_common.h"
 #endif
-
-#include "usb_notifier.h"
+#if IS_ENABLED(CONFIG_COMBO_REDRIVER_PS5169)
+#include <linux/combo_redriver/ps5169.h>
+#endif
 
 #if IS_ENABLED(CONFIG_EXTCON_MTK_USB)
-#include <linux/usb/role.h>
 #include "../../misc/mediatek/extcon/extcon-mtk-usb.h"
 #endif
 
@@ -306,14 +307,18 @@ static int pdic_usb_handle_notification(struct notifier_block *nb,
 	switch (usb_status.drp) {
 	case USB_STATUS_NOTIFY_ATTACH_DFP:
 		pr_info("%s: Turn On Host(DFP)\n", __func__);
+#if IS_ENABLED(CONFIG_COMBO_REDRIVER_PS5169)
+		ps5169_config(USB_ONLY_MODE, 1);
+#endif
 		send_otg_notify(o_notify, NOTIFY_EVENT_HOST, 1);
 		pdata->is_host = 1;
 		break;
 	case USB_STATUS_NOTIFY_ATTACH_UFP:
 		pr_info("%s: Turn On Device(UFP)\n", __func__);
+#if IS_ENABLED(CONFIG_COMBO_REDRIVER_PS5169)
+		ps5169_config(USB_ONLY_MODE, 0);
+#endif
 		send_otg_notify(o_notify, NOTIFY_EVENT_VBUS, 1);
-		if (is_blocked(o_notify, NOTIFY_BLOCK_TYPE_CLIENT))
-			return -EPERM;
 		break;
 	case USB_STATUS_NOTIFY_DETACH:
 		if (pdata->is_host) {
@@ -324,6 +329,9 @@ static int pdic_usb_handle_notification(struct notifier_block *nb,
 			pr_info("%s: Turn Off Device(UFP)\n", __func__);
 			send_otg_notify(o_notify, NOTIFY_EVENT_VBUS, 0);
 		}
+#if IS_ENABLED(CONFIG_COMBO_REDRIVER_PS5169)
+		ps5169_config(CLEAR_STATE, 0);
+#endif
 		break;
 	default:
 		pr_info("%s: unsupported DRP type : %d.\n", __func__, usb_status.drp);
@@ -532,17 +540,18 @@ static int set_online(int event, int state)
 	if (!np_charger) {
 		pr_err("%s: failed to get the battery device node\n", __func__);
 		return 0;
-	} else {
-		if (!of_property_read_string(np_charger, "battery,charger_name",
-					(char const **)&charger_name)) {
-			pr_info("%s: charger_name = %s\n", __func__,
-					charger_name);
-		} else {
-			pr_err("%s: failed to get the charger name\n",
-								 __func__);
-			return 0;
-		}
 	}
+
+	if (!of_property_read_string(np_charger, "battery,charger_name",
+				(char const **)&charger_name)) {
+		pr_info("%s: charger_name = %s\n", __func__,
+				charger_name);
+	} else {
+		pr_err("%s: failed to get the charger name\n",
+							 __func__);
+		return 0;
+	}
+
 	/* for KNOX DT charging */
 	pr_info("Knox Desktop connection state = %s\n", state ? "Connected" : "Disconnected");
 #if IS_ENABLED(CONFIG_BATTERY_SAMSUNG)
@@ -558,49 +567,16 @@ static int set_online(int event, int state)
 	return 0;
 }
 
-#if IS_ENABLED(CONFIG_USB_MTK_HDRC) || IS_ENABLED(CONFIG_USB_MTU3)
-#if IS_ENABLED(CONFIG_EXTCON_MTK_USB) && IS_ENABLED(CONFIG_USB_ROLE_SWITCH)
-struct usb_role_switch *get_mtk_role_switch(void)
-{
-	struct device_node *np = NULL;
-	struct platform_device *pdev = NULL;
-	struct device *dev = NULL;
-	struct usb_role_switch *role_sw = NULL;
-
-	np = of_find_compatible_node(NULL, NULL, "mediatek,extcon-usb");
-	if (np == NULL) {
-		pr_err("%s of_find_compatible_node err\n", __func__);
-		goto err;
-	}
-
-	pdev = of_find_device_by_node(np);
-	if (pdev == NULL) {
-		pr_err("%s of_find_device_by_node err\n", __func__);
-		of_node_put(np);
-		goto err;
-	}
-
-	dev = &pdev->dev;
-
-	of_node_put(np);
-
-	role_sw = usb_role_switch_get(dev);
-	if (role_sw == NULL)
-		pr_err("%s usb_role_switch_get err\n", __func__);
-err:
-	return role_sw;
-}
-#endif
-
+/*
 static int mtk_set_host(bool enable)
 {
 	pr_info("%s enable %d +\n", __func__, enable);
-#if IS_ENABLED(CONFIG_EXTCON_MTK_USB)
+
 	if (enable)
 		mtk_usb_notify_set_mode(USB_ROLE_HOST);
 	else
 		mtk_usb_notify_set_mode(USB_ROLE_NONE);
-#endif
+
 	pr_info("%s -\n", __func__);
 	return 0;
 }
@@ -608,16 +584,16 @@ static int mtk_set_host(bool enable)
 static int mtk_set_peripheral(bool enable)
 {
 	pr_info("%s enable %d +\n", __func__, enable);
-#if IS_ENABLED(CONFIG_EXTCON_MTK_USB)
+
 	if (enable)
 		mtk_usb_notify_set_mode(USB_ROLE_DEVICE);
 	else
 		mtk_usb_notify_set_mode(USB_ROLE_NONE);
-#endif
+
 	pr_info("%s -\n", __func__);
 	return 0;
 }
-#endif
+*/
 
 static int usb_set_chg_current(int state)
 {
@@ -696,13 +672,12 @@ static int is_skip_list(int index)
 	return ret;
 }
 #endif
-#if IS_ENABLED(CONFIG_USB_MTK_HDRC) || IS_ENABLED(CONFIG_USB_MTU3)
+
 static struct otg_notify musb_mtk_notify = {
 	.vbus_drive	= otg_accessory_power,
-	.set_host = mtk_set_host,
-	.set_peripheral	= mtk_set_peripheral,
+//	.set_host = mtk_set_host,
+//	.set_peripheral	= mtk_set_peripheral,
 	.vbus_detect_gpio = -1,
-	.is_host_wakelock = 1,
 	.is_wakelock = 1,
 	.booting_delay_sec = 12,
 #if !IS_ENABLED(CONFIG_PDIC_NOTIFIER)
@@ -722,9 +697,17 @@ static struct otg_notify musb_mtk_notify = {
 #if defined(CONFIG_USB_HW_PARAM)
 	.is_skip_list = is_skip_list,
 #endif
-	.pre_peri_delay_us = 6,
 };
-#endif	/* CONFIG_USB_MTK_HDRC */
+
+void register_set_peripheral(int (*mtk_set_peripheral)(bool enable)){
+	musb_mtk_notify.set_peripheral = mtk_set_peripheral;
+}
+EXPORT_SYMBOL(register_set_peripheral);
+
+void register_set_host(int (*mtk_set_host)(bool enable)){
+	musb_mtk_notify.set_host = mtk_set_host;
+}
+EXPORT_SYMBOL(register_set_host);
 
 static int usb_notifier_probe(struct platform_device *pdev)
 {
@@ -734,10 +717,8 @@ static int usb_notifier_probe(struct platform_device *pdev)
 	if (pdev->dev.of_node) {
 		pdata = devm_kzalloc(&pdev->dev,
 			sizeof(struct usb_notifier_platform_data), GFP_KERNEL);
-		if (!pdata) {
-			dev_err(&pdev->dev, "Failed to allocate memory\n");
+		if (!pdata)
 			return -ENOMEM;
-		}
 
 		ret = of_usb_notifier_dt(&pdev->dev, pdata);
 		if (ret < 0) {
@@ -749,14 +730,13 @@ static int usb_notifier_probe(struct platform_device *pdev)
 	} else
 		pdata = pdev->dev.platform_data;
 
-#if IS_ENABLED(CONFIG_USB_MTK_HDRC) || IS_ENABLED(CONFIG_USB_MTU3)
 	musb_mtk_notify.redriver_en_gpio = pdata->gpio_redriver_en;
 	musb_mtk_notify.disable_control = pdata->can_disable_usb;
 	musb_mtk_notify.is_host_wakelock = pdata->host_wake_lock_enable;
 	musb_mtk_notify.is_wakelock = pdata->device_wake_lock_enable;
 	set_otg_notify(&musb_mtk_notify);
 	set_notify_data(&musb_mtk_notify, pdata);
-#endif
+
 #if IS_ENABLED(CONFIG_PDIC_NOTIFIER)
 	pdata->usb_ldo_onoff = 0;
 	INIT_DELAYED_WORK(&pdata->usb_ldo_work,
@@ -786,9 +766,10 @@ static int usb_notifier_probe(struct platform_device *pdev)
 
 static int usb_notifier_remove(struct platform_device *pdev)
 {
-#if IS_ENABLED(CONFIG_PDIC_NOTIFIER) || IS_ENABLED(CONFIG_VBUS_NOTIFIER) 
+#if IS_ENABLED(CONFIG_PDIC_NOTIFIER) || IS_ENABLED(CONFIG_MUIC_NOTIFIER) || IS_ENABLED(CONFIG_VBUS_NOTIFIER)
 	struct usb_notifier_platform_data *pdata = dev_get_platdata(&pdev->dev);
 #endif
+
 #if IS_ENABLED(CONFIG_PDIC_NOTIFIER)
 #if IS_ENABLED(CONFIG_USB_TYPEC_MANAGER_NOTIFIER)
 	manager_notifier_unregister(&pdata->pdic_usb_nb);
@@ -838,6 +819,7 @@ static void __exit usb_notifier_exit(void)
 late_initcall(usb_notifier_init);
 module_exit(usb_notifier_exit);
 
-MODULE_AUTHOR("inchul.im <inchul.im@samsung.com>");
+MODULE_SOFTDEP("post:extcon-mtk-usb");
+MODULE_AUTHOR("Samsung USB Team");
 MODULE_DESCRIPTION("USB notifier");
 MODULE_LICENSE("GPL");

@@ -2125,11 +2125,11 @@ p2pFuncSwitchOPMode(struct ADAPTER *prAdapter,
 					COPY_MAC_ADDR(
 						prP2pBssInfo->aucOwnMacAddr,
 						prAdapter->rWifiVar
-							.aucDeviceAddress);
+							.aucP2pDevAddr[0]);
 					COPY_MAC_ADDR(
 						prP2pBssInfo->aucBSSID,
 						prAdapter->rWifiVar
-							.aucDeviceAddress);
+							.aucP2pDevAddr[0]);
 
 				}
 				break;

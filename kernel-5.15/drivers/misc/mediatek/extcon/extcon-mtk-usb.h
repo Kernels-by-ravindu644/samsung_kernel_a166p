@@ -47,7 +47,3 @@ enum {
 	DUAL_PROP_PR_SNK,
 	DUAL_PROP_PR_NONE,
 };
-
-#if IS_ENABLED(CONFIG_USB_NOTIFIER)
-int mtk_usb_notify_set_mode(int role);
-#endif

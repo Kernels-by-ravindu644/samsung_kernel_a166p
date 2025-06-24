@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
  * Copyright (c) 2018 Samsung Electronics Co., Ltd. All Rights Reserved
  *
@@ -14,15 +15,16 @@
 #include <linux/kthread.h>
 #include <linux/types.h>
 #include <linux/version.h>
+#include "include/defex_internal.h"
 
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 12, 0)
+#if KERNEL_VER_GTE(4, 12, 0)
 #include <linux/mm.h>
 #endif /* < KERNEL_VERSION(4, 12, 0) */
 
 #include "include/defex_debug.h"
-#include "include/defex_internal.h"
 #include "include/defex_rules.h"
 #include "include/defex_sign.h"
+#include "include/defex_tree.h"
 #ifdef DEFEX_TRUSTED_MAP_ENABLE
 #include "include/defex_tailer.h"
 #include "include/ptree.h"
@@ -59,26 +61,32 @@
 #undef DEFEX_RULES_ARRAY_SIZE
 #define DEFEX_RULES_ARRAY_SIZE	DEFEX_RULES_ARRAY_SIZE_MIN
 #endif
-#ifdef DEFEX_KERNEL_ONLY
+#ifdef DEFEX_GKI
 #undef DEFEX_RULES_ARRAY_SIZE
 #define DEFEX_RULES_ARRAY_SIZE	DEFEX_RULES_ARRAY_SIZE_MAX
-__visible_for_testing unsigned char packed_rules_primary[DEFEX_RULES_ARRAY_SIZE] = {0};
+__visible_for_testing unsigned char *rules_primary_data;
 #else
 #if (DEFEX_RULES_ARRAY_SIZE < DEFEX_RULES_ARRAY_SIZE_FIXED)
 #undef DEFEX_RULES_ARRAY_SIZE
 #define DEFEX_RULES_ARRAY_SIZE	DEFEX_RULES_ARRAY_SIZE_FIXED
 #endif
-__visible_for_testing unsigned char packed_rules_primary[DEFEX_RULES_ARRAY_SIZE] __ro_after_init = {0};
-#endif /* DEFEX_KERNEL_ONLY */
-static unsigned char *packed_rules_secondary;
+__visible_for_testing unsigned char rules_primary_data[DEFEX_RULES_ARRAY_SIZE] __ro_after_init;
+#endif /* DEFEX_GKI */
+__visible_for_testing unsigned char *rules_secondary_data;
 #ifdef DEFEX_TRUSTED_MAP_ENABLE
 struct PPTree dtm_tree;
 #endif
 
+static struct d_tree rules_primary, rules_secondary;
+#ifdef DEFEX_KUNIT_ENABLED
+int rules_primary_size, rules_secondary_size;
+#endif /* DEFEX_KUNIT_ENABLED */
 #endif /* DEFEX_RAMDISK_ENABLE */
 
 #ifdef DEFEX_TRUSTED_MAP_ENABLE
-/* In loaded policy, title of DTM's section; set by tailer -t in buildscript/build_external/defex. */
+/* In loaded policy, title of DTM's section; set by tailer -t in
+ *	buildscript/build_external/defex.
+ */
 #define DEFEX_DTM_SECTION_NAME "dtm_rules"
 #endif
 
@@ -106,11 +114,12 @@ static const struct rules_file_struct rules_files[4] = {
 static volatile unsigned int load_flags;
 static DEFINE_SPINLOCK(rules_data_lock);
 
-static unsigned int get_load_flags(void)
+unsigned int get_load_flags(void)
 {
 	unsigned int data;
+
 	spin_lock(&rules_data_lock);
-	data = load_flags; 
+	data = load_flags;
 	spin_unlock(&rules_data_lock);
 	return data;
 }
@@ -118,6 +127,7 @@ static unsigned int get_load_flags(void)
 static unsigned int update_load_flags(unsigned int new_flags)
 {
 	unsigned int data;
+
 	spin_lock(&rules_data_lock);
 	data = load_flags;
 	data |= new_flags;
@@ -126,39 +136,47 @@ static unsigned int update_load_flags(unsigned int new_flags)
 	return data;
 }
 
-__visible_for_testing unsigned long get_current_sec(void)
+__visible_for_testing struct d_tree *get_rules_ptr(int is_system)
 {
-#if LINUX_VERSION_CODE < KERNEL_VERSION(5, 11, 0)
-	return get_seconds();
-#else
-	return ktime_get_seconds();
-#endif
-}
-
-__visible_for_testing char *get_rules_ptr(int is_system)
-{
-	char *ptr;
+	struct d_tree *ptr;
 
 	spin_lock(&rules_data_lock);
 	if (load_flags & LOAD_FLAG_SYSTEM_FIRST)
 		is_system = !is_system;
-	ptr = is_system ? (char *)packed_rules_secondary : (char *)packed_rules_primary;
+	ptr = is_system ? &rules_secondary : &rules_primary;
 	spin_unlock(&rules_data_lock);
 	return ptr;
 }
 
 __visible_for_testing int get_rules_size(int is_system)
 {
-	struct rule_item_struct *rules_ptr = (struct rule_item_struct *)get_rules_ptr(is_system);
+	struct d_tree *rules_ptr = get_rules_ptr(is_system);
 
 	return rules_ptr ? rules_ptr->data_size : 0;
 }
 
 int check_rules_ready(void)
 {
-	struct rule_item_struct *base = (struct rule_item_struct *)packed_rules_primary;
+	return (rules_primary.version == D_TREE_VERSION_INVALID) ? 0 : 1;
+}
 
-	return (!base || !base->data_size)?0:1;
+static int check_path_is_system(const char *path)
+{
+	int i;
+	static const int path_size_list[] = { 8, 9, 6, 12, 20 };
+	static const char * const path_list[] = {
+		"/system/",
+		"/product/",
+		"/apex/",
+		"/system_ext/",
+		"/postinstall/system/"
+	};
+
+	for (i = 0; i < ARRAY_SIZE(path_list); i++) {
+		if (!strncmp(path_list[i], path, path_size_list[i]))
+			return 1;
+	}
+	return 0;
 }
 
 __visible_for_testing int check_system_mount(void)
@@ -193,19 +211,27 @@ __visible_for_testing int check_system_mount(void)
 }
 
 #ifdef DEFEX_INTEGRITY_ENABLE
-__visible_for_testing int defex_check_integrity(struct file *f, unsigned char *hash)
+__visible_for_testing int defex_check_integrity(struct file *f, struct d_tree_item *item)
 {
 	struct crypto_shash *handle = NULL;
 	struct shash_desc *shash = NULL;
+	const void *hash = NULL;
 	static const unsigned char buff_zero[SHA256_DIGEST_SIZE] = {0};
 	unsigned char hash_sha256[SHA256_DIGEST_SIZE];
 	unsigned char *buff = NULL;
 	size_t buff_size = PAGE_SIZE;
 	loff_t file_size = 0;
-	int ret = 0, err = 0, read_size = 0;
+	int ret = 0, err = 0, read_size = 0, hash_size;
+
+	if (item == NULL)
+		return -1;
+
+	if (item->features & d_tree_item_integrity)
+		hash = d_tree_get_table_data(d_tree_integrity_table, item->tree,
+			item->integrity_index, &hash_size);
 
 	// A saved hash is zero, skip integrity check
-	if (!memcmp(buff_zero, hash, SHA256_DIGEST_SIZE))
+	if (!hash || hash_size != INTEGRITY_LENGTH || !memcmp(buff_zero, hash, SHA256_DIGEST_SIZE))
 		return ret;
 
 	if (IS_ERR(f))
@@ -218,8 +244,8 @@ __visible_for_testing int defex_check_integrity(struct file *f, unsigned char *h
 		return -1;
 	}
 
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 12, 0)
-	shash = (struct shash_desc *)kvzalloc(sizeof(struct shash_desc) + crypto_shash_descsize(handle), GFP_KERNEL);
+#if KERNEL_VER_GTE(4, 12, 0)
+	shash = kvzalloc(sizeof(struct shash_desc) + crypto_shash_descsize(handle), GFP_KERNEL);
 #else
 	shash = kzalloc(sizeof(struct shash_desc) + crypto_shash_descsize(handle), GFP_KERNEL);
 #endif /* < KERNEL_VERSION(4, 12, 0) */
@@ -229,7 +255,7 @@ __visible_for_testing int defex_check_integrity(struct file *f, unsigned char *h
 
 	shash->tfm = handle;
 
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 12, 0)
+#if KERNEL_VER_GTE(4, 12, 0)
 	buff = kvmalloc(buff_size, GFP_KERNEL);
 #else
 	buff = kmalloc(buff_size, GFP_KERNEL);
@@ -266,13 +292,13 @@ __visible_for_testing int defex_check_integrity(struct file *f, unsigned char *h
 hash_error:
 	ret = -1;
 hash_exit:
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 12, 0)
+#if KERNEL_VER_GTE(4, 12, 0)
 	kvfree(buff);
 	kvfree(shash);
 #else
 	kfree(buff);
 	kfree(shash);
-#endif /* < KERNEL_VERSION(4, 12, 0) */
+#endif /* KERNEL_VER_GTE(4, 12, 0) */
 
 	if (handle)
 		crypto_free_shash(handle);
@@ -292,36 +318,30 @@ __visible_for_testing int defex_integrity_default(const char *file_path)
 #if defined(DEFEX_RAMDISK_ENABLE)
 
 #ifdef DEFEX_TRUSTED_MAP_ENABLE
-static const unsigned char *find_policy_section(const char *name, const char *data, int data_size, long *section_size)
+static const unsigned char *find_policy_section(const char *name, const char *data,
+			int data_size, long *section_size)
 {
 	return data_size > 0 ? defex_tailerp_find(data, data_size, name, section_size) : 0;
 }
 #endif
 
-__visible_for_testing int check_rule_structure(unsigned char *data_buff)
-{
-	struct rule_item_struct *rules_ptr = (struct rule_item_struct *)data_buff;
-	int res = 0;
-	const int req_size = sizeof(struct rule_item_struct) + rules_ptr->size;
-
-#ifdef DEFEX_INTEGRITY_ENABLE
-	const int integrity_state = 1;
-#else
-	const int integrity_state = 0;
-#endif /* DEFEX_INTEGRITY_ENABLE */
-	if (rules_ptr->next_level != req_size || memcmp(rules_ptr->name, "DEFEX_RULES_FILE", 16) != 0) {
-		defex_log_err("Rules structure is wrong. Integrity state: %d", integrity_state);
-		res = -1;
-	} else {
-		defex_log_info("Rules structure is OK. Integrity state: %d", integrity_state);
-	}
-	return res;
-}
-
 __visible_for_testing int load_rules_common(struct file *f, int flags)
 {
 	int res = -1, data_size, rules_size;
 	unsigned char *data_buff = NULL;
+	struct dentry *f_dentry = file_dentry(f);
+	struct inode *f_inode = file_inode(f);
+/* where additional features like DTM could look for policy data */
+	const unsigned char *policy_data = NULL;
+#ifdef DEFEX_TRUSTED_MAP_ENABLE
+	const unsigned char *dtm_section;
+#endif /* DEFEX_TRUSTED_MAP_ENABLE */
+
+	if (!(f->f_mode & FMODE_READ) || !f_dentry || f_dentry->d_inode != f_inode ||
+			!check_slab_ptr(f_inode) || !S_ISREG(f_inode->i_mode)) {
+		defex_log_err("Failed to open the file");
+		goto do_clean;
+	}
 
 	data_size = i_size_read(file_inode(f));
 	if (data_size <= 0 || data_size > DEFEX_RULES_ARRAY_SIZE_MAX)
@@ -338,57 +358,80 @@ __visible_for_testing int load_rules_common(struct file *f, int flags)
 	defex_log_info("Read %d bytes", rules_size);
 
 #ifdef DEFEX_SIGN_ENABLE
-	res = defex_rules_signature_check((char *)data_buff, (unsigned int)rules_size, (unsigned int *)&rules_size);
+	res = defex_rules_signature_check((char *)data_buff, (unsigned int)rules_size,
+		(unsigned int *)&rules_size);
 
 	if (!res)
 		defex_log_info("Rules signature verified successfully");
 	else
-		defex_log_err("Rules signature incorrect!!!");
+		defex_log_err("Rules signature incorrect!!!, err = %d", res);
 #else
 	res = 0;
 #endif
 
-	if (!res)
-		res = check_rule_structure(data_buff);
-
 	if (!res) {
-		const unsigned char *policy_data = NULL; /* where additional features like DTM could look for policy data */
 		if (!(get_load_flags() & (LOAD_FLAG_DPOLICY | LOAD_FLAG_DPOLICY_SYSTEM))) {
-			if (rules_size > sizeof(packed_rules_primary)) {
+#ifndef DEFEX_GKI
+			if (rules_size > sizeof(rules_primary_data)) {
+				defex_log_err("Primary rules buffer overflow [%d > %d]",
+					rules_size, (int)sizeof(rules_primary_data));
 				res = -1;
 				goto do_clean;
 			}
+#endif /* DEFEX_GKI */
 			spin_lock(&rules_data_lock);
-			memcpy(packed_rules_primary, data_buff, rules_size);
+#ifdef DEFEX_GKI
+			if (!rules_primary_data) {
+				rules_primary_data = data_buff;
+				data_buff = NULL;
+			}
+#else
+			memcpy(rules_primary_data, data_buff, rules_size);
+#endif
+			res = d_tree_get_header(rules_primary_data, rules_size, &rules_primary);
 			spin_unlock(&rules_data_lock);
-			policy_data = packed_rules_primary;
+			if (!res) {
+				policy_data = rules_primary_data;
 #if !defined(DEFEX_SINGLE_RULES_FILE)
 			if (flags & LOAD_FLAG_DPOLICY_SYSTEM)
 				update_load_flags(LOAD_FLAG_SYSTEM_FIRST);
 #endif
-			defex_log_info("Primary rules have been stored");
+#ifdef DEFEX_KUNIT_ENABLED
+				rules_primary_size = rules_size;
+#endif /* DEFEX_KUNIT_ENABLED */
+				defex_log_info("Primary rules have been stored");
+			}
 		} else {
 			if (rules_size > 0) {
 				spin_lock(&rules_data_lock);
-				packed_rules_secondary = data_buff;
+				rules_secondary_data = data_buff;
 				data_buff = NULL;
+				res = d_tree_get_header(rules_secondary_data, rules_size,
+					&rules_secondary);
 				spin_unlock(&rules_data_lock);
-				policy_data = packed_rules_secondary;
-				defex_log_info("Secondary rules have been stored");
+				if (!res) {
+					policy_data = rules_secondary_data;
+#ifdef DEFEX_KUNIT_ENABLED
+					rules_secondary_size = rules_size;
+#endif /* DEFEX_KUNIT_ENABLED */
+					defex_log_info("Secondary rules have been stored");
+				}
 			}
 		}
 #ifdef DEFEX_SHOW_RULES_ENABLE
 		if (policy_data)
-			defex_show_structure((void *)policy_data, rules_size);
+			defex_rules_show((void *)policy_data, rules_size);
 #endif /* DEFEX_SHOW_RULES_ENABLE */
 #ifdef DEFEX_TRUSTED_MAP_ENABLE
 		if (policy_data && !dtm_tree.data) { /* DTM not yet initialized */
-			const unsigned char *dtm_section = find_policy_section(DEFEX_DTM_SECTION_NAME,
-										policy_data, rules_size, 0);
+			dtm_section = find_policy_section(DEFEX_DTM_SECTION_NAME, policy_data,
+				rules_size, 0);
 			if (dtm_section)
 				pptree_set_data(&dtm_tree, dtm_section);
 		}
 #endif
+		if (res != 0)
+			goto do_clean;
 		update_load_flags(flags);
 		res = rules_size;
 	}
@@ -434,11 +477,16 @@ int load_rules_thread(void *params)
 	const struct rules_file_struct *item;
 	unsigned long start_time, cur_time, last_time = 0;
 	int load_counter = 0;
+#ifdef DEFEX_LOG_FILE_ENABLE
+	const bool keep_thread = true;
+#else
+	const bool keep_thread = false;
+#endif /* DEFEX_LOG_FILE_ENABLE */
 
 	(void)params;
 
 	start_time = get_current_sec();
-	while (!kthread_should_stop()) {
+	while (!is_reboot_pending() && !kthread_should_stop()) {
 		cur_time = get_current_sec();
 		if ((cur_time - last_time) < 5) {
 			if (msleep_interruptible(1000) != 0)
@@ -447,13 +495,13 @@ int load_rules_thread(void *params)
 		}
 		last_time = cur_time;
 
-		if ((cur_time - start_time) > 600) {
+		if (!keep_thread && (cur_time - start_time) > 600) {
 			update_load_flags(LOAD_FLAG_TIMEOUT);
 			defex_log_warn("Late load timeout. Try counter = %d", load_counter);
 			break;
 		}
 		load_counter++;
-
+		f = NULL;
 		for (f_index = 0; f_index < ARRAY_SIZE(rules_files); f_index++) {
 			item = &rules_files[f_index];
 			if (!(get_load_flags() & item->flags) && validate_file(item->name)) {
@@ -464,25 +512,30 @@ int load_rules_thread(void *params)
 				}
 			}
 		}
-		if (IS_ERR_OR_NULL(f)) {
-#ifdef DEFEX_KERNEL_ONLY
+		if (IS_ERR(f)) {
+#ifdef DEFEX_GKI
 			defex_log_err("Failed to open rules file (%ld)", (long)PTR_ERR(f));
-#endif /* DEFEX_KERNEL_ONLY */
-		} else
-			load_rules_common(f, item->flags);
-		if ((get_load_flags() & load_both_mask) == load_both_mask)
+#endif /* DEFEX_GKI */
+		} else {
+			if (!IS_ERR_OR_NULL(f))
+				load_rules_common(f, item->flags);
+		}
+		if (!keep_thread && (get_load_flags() & load_both_mask) == load_both_mask)
 			break;
+#ifdef DEFEX_LOG_FILE_ENABLE
+		storage_log_process();
+#endif /* DEFEX_LOG_FILE_ENABLE */
 	}
 	return 0;
 }
 
 
-int load_rules_late(int forced_load)
+int load_rules_late(void)
 {
 	int res = 0;
 	static atomic_t load_lock = ATOMIC_INIT(1);
 	static int first_entry;
-	struct task_struct *thread_ptr; 
+	struct task_struct *thread_ptr;
 
 	if (get_load_flags() & LOAD_FLAG_TIMEOUT)
 		return -1;
@@ -516,7 +569,7 @@ int __init do_load_rules(void)
 	unsigned int f_index = 0;
 	const struct rules_file_struct *item;
 
-	if (boot_state_recovery)
+	if (is_boot_state_recovery())
 		update_load_flags(LOAD_FLAG_RECOVERY);
 
 load_next:
@@ -537,17 +590,17 @@ load_next:
 			return 0;
 		defex_log_err("Failed to open rules file (%ld)", (long)PTR_ERR(f));
 
-#ifdef DEFEX_KERNEL_ONLY
+#ifdef DEFEX_GKI
 		if (get_load_flags() & LOAD_FLAG_RECOVERY)
 			res = 0;
-#endif /* DEFEX_KERNEL_ONLY */
+#endif /* DEFEX_GKI */
 		return res;
 	}
 
 	res = load_rules_common(f, item->flags);
 	res = (res < 0) ? res : 0;
 
-#ifdef DEFEX_KERNEL_ONLY
+#ifdef DEFEX_GKI
 	if ((get_load_flags() & LOAD_FLAG_RECOVERY) && res != 0) {
 		res = 0;
 		defex_log_info("Kernel Only & recovery mode, rules loading is passed");
@@ -560,140 +613,87 @@ load_next:
 
 #endif /* DEFEX_RAMDISK_ENABLE */
 
-__visible_for_testing struct rule_item_struct *lookup_dir(struct rule_item_struct *base,
-								const char *name,
-								int l,
-								int attribute,
-								char *base_start)
-{
-	struct rule_item_struct *item = NULL, *tmp_item_attr = NULL, *tmp_item_rec = NULL;
-	unsigned int offset, feature;
-	unsigned int feature_mask = attribute & (~feature_for_recovery);
-	unsigned int recovery_mask = attribute & feature_for_recovery;
-
-	if (!base || !base_start)
-		return item;
-	offset = base->next_level;
-	item = GET_ITEM_PTR(offset, base_start);
-	while (offset) {
-		if (item->size == l && !memcmp(name, item->name, l)) {
-			feature = item->feature_type;
-			if (!(feature & feature_is_file))
-				return item;
-			if ((feature & feature_mask) == feature_mask)
-				tmp_item_attr = item;
-			if ((feature & feature_for_recovery) == recovery_mask)
-				tmp_item_rec = item;
-			if (tmp_item_attr && tmp_item_attr == tmp_item_rec)
-				break;
-		}
-		offset = item->next_file;
-		item = GET_ITEM_PTR(offset, base_start);
-	}
-	return (tmp_item_attr) ? tmp_item_attr : tmp_item_rec;
-}
 
 __visible_for_testing int lookup_tree(const char *file_path,
-					int attribute,
+					unsigned int attribute,
 					struct file *f,
-					struct rule_item_struct **found_item)
+					struct d_tree_item *found_item, int linked_offset)
 {
-	const char *ptr, *next_separator;
-	struct rule_item_struct *base, *cur_item = NULL;
-	char *base_start;
-	int l, is_system, forced_load = 0;
+	struct d_tree *base, *last_base = NULL;
+	int is_system, offset, iteration = 0;
 	const int is_recovery = (get_load_flags() & LOAD_FLAG_RECOVERY) ? feature_for_recovery : 0;
 	const unsigned int load_both_mask = (LOAD_FLAG_DPOLICY | LOAD_FLAG_DPOLICY_SYSTEM);
-	int iterator = 0;
+	struct d_tree_item local_item;
+	struct d_tree_ctx ctx;
+	static const unsigned int attr_def_one = (feature_ped_exception |
+						  feature_safeplace_path |
+						  feature_umhbin_path |
+						  feature_immutable_src_exception |
+						  feature_immutable_dst_exception |
+						  feature_immutable_root);
 
-	if (found_item)
-		*found_item = NULL;
-
-	if (!file_path || *file_path != '/')
-		return 0;
-
-	is_system = ((strncmp("/system/", file_path, 8) == 0) ||
-			(strncmp("/product/", file_path, 9) == 0) ||
-			(strncmp("/apex/", file_path, 6) == 0) ||
-			(strncmp("/system_ext/", file_path, 12) == 0) ||
-			(strncmp("/postinstall/system/", file_path, 20) == 0)) ? 1 : 0;
+	if (!found_item)
+		found_item = &local_item;
 
 	if ((get_load_flags() & load_both_mask) != load_both_mask &&
 			!(get_load_flags() & LOAD_FLAG_TIMEOUT)) {
 		/* allow all requests if rules were not loaded for Recovery mode */
-		if (!load_rules_late(forced_load) || is_recovery)
-			return (attribute == feature_ped_exception ||
-				attribute == feature_umhbin_path ||
-				attribute == feature_safeplace_path) ? 1 : 0;
+		if (!load_rules_late() || is_recovery) {
+			if (attr_def_one & attribute)
+				return 1;
+			return 0;
+		}
 	}
 
-try_not_system:
+	if (!file_path || *file_path != '/')
+		return 0;
 
-	base_start = get_rules_ptr(get_rules_size(is_system) ? is_system : (!is_system));
-	base = (struct rule_item_struct *)base_start;
+	is_system = check_path_is_system(file_path);
 
-	if (!base || !base->data_size) {
+try_next:
+
+	base = get_rules_ptr(get_rules_size(is_system) ? is_system : (!is_system));
+	if (base == last_base || !base || !base->data_size) {
 		/* block all requests if rules were not loaded */
 		return 0;
 	}
-
-	ptr = file_path + 1;
-	do {
-		next_separator = strchr(ptr, '/');
-		if (!next_separator)
-			l = strlen(ptr);
-		else
-			l = next_separator - ptr;
-		if (!l)
-			return 0;
-		cur_item = lookup_dir(base, ptr, l, attribute | is_recovery, base_start);
-		if (!cur_item)
-			break;
-
-		ptr += l;
-		if (next_separator)
-			ptr++;
-
-		if (cur_item->feature_type & attribute) {
+	last_base = base;
+	d_tree_lookup_init(base, &ctx, 0, attribute | is_recovery, 0);
+	ctx.linked_offset = linked_offset;
+	offset = d_tree_lookup_path(&ctx, file_path, found_item);
+	if (offset > 0) {
 #ifdef DEFEX_INTEGRITY_ENABLE
-			/* Integrity acceptable only for files */
-			if ((cur_item->feature_type & feature_integrity_check) &&
-				(cur_item->feature_type & feature_is_file) && f) {
-				if (defex_integrity_default(file_path)
-					&& defex_check_integrity(f, cur_item->integrity))
-					return DEFEX_INTEGRITY_FAIL;
-			}
-#endif /* DEFEX_INTEGRITY_ENABLE */
-			if (attribute & (feature_immutable_path_open | feature_immutable_path_write)
-				&& !(cur_item->feature_type & feature_is_file)) {
-				/* Allow open the folder by default */
-				if (!*ptr)
-					return 0;
-			}
-			if (found_item)
-				*found_item = cur_item;
-			return GET_ITEM_OFFSET(cur_item, base_start);
+		/* Integrity acceptable only for files */
+		if ((found_item->features & feature_integrity_check) &&
+			(found_item->features & feature_is_file) && f) {
+			if (defex_integrity_default(file_path)
+				&& defex_check_integrity(f, found_item))
+				return DEFEX_INTEGRITY_FAIL;
 		}
-		base = cur_item;
-	} while (*ptr);
-	if ((get_load_flags() & load_both_mask) == load_both_mask && ++iterator < 2) {
+#endif /* DEFEX_INTEGRITY_ENABLE */
+		return offset;
+	}
+
+	if ((get_load_flags() & load_both_mask) == load_both_mask && ++iteration < 2) {
 		is_system = !is_system;
-		goto try_not_system;
+		goto try_next;
 	}
 	return 0;
 }
 
-int rules_lookup(const char *target_file, int attribute, struct file *f, struct rule_item_struct **found_item)
+int rules_lookup(const char *target_file, int attribute, struct file *f,
+		struct d_tree_item *found_item, int linked_offset)
 {
 	int ret = 0;
-#if (defined(DEFEX_SAFEPLACE_ENABLE) || defined(DEFEX_IMMUTABLE_ENABLE) || defined(DEFEX_PED_ENABLE))
+#if (defined(DEFEX_SAFEPLACE_ENABLE) || defined(DEFEX_IMMUTABLE_ENABLE) \
+		|| defined(DEFEX_PED_ENABLE))
 	static const char system_root_txt[] = "/system_root";
 
 	if (check_system_mount() &&
 		!strncmp(target_file, system_root_txt, sizeof(system_root_txt) - 1))
 		target_file += (sizeof(system_root_txt) - 1);
 
-	ret = lookup_tree(target_file, attribute, f, found_item);
+	ret = lookup_tree(target_file, attribute, f, found_item, linked_offset);
 #endif
 	return ret;
 }
@@ -701,8 +701,8 @@ int rules_lookup(const char *target_file, int attribute, struct file *f, struct 
 void __init defex_load_rules(void)
 {
 #if defined(DEFEX_RAMDISK_ENABLE)
-	if (!boot_state_unlocked && do_load_rules() != 0) {
-#if !(defined(DEFEX_DEBUG_ENABLE) || defined(DEFEX_KERNEL_ONLY))
+	if (!is_boot_state_unlocked() && do_load_rules() != 0) {
+#if !(defined(DEFEX_DEBUG_ENABLE) || defined(DEFEX_GKI))
 		panic("[DEFEX] Signature mismatch.\n");
 #endif
 	}

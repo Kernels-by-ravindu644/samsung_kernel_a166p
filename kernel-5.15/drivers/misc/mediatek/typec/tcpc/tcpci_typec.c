@@ -1098,15 +1098,17 @@ static inline void typec_attach_wait_entry(struct tcpc_device *tcpc)
 
 static inline int typec_attached_snk_cc_detach(struct tcpc_device *tcpc)
 {
-	tcpc_reset_typec_debounce_timer(tcpc);
 #if IS_ENABLED(CONFIG_USB_POWER_DELIVERY)
-	if (tcpc->pd_wait_hard_reset_complete) {
-		TYPEC_INFO2("Detach_CC (HardReset)\n");
-		tcpc_enable_timer(tcpc, TYPEC_TIMER_PDDEBOUNCE);
-	} else if (tcpc->pd_port.pe_data.pd_prev_connected) {
-		TYPEC_INFO2("Detach_CC (PD)\n");
-		tcpc_enable_timer(tcpc, TYPEC_TIMER_PDDEBOUNCE);
+	tcpc_enable_timer(tcpc, TYPEC_TIMER_PDDEBOUNCE);
+#if CONFIG_USB_PD_DIRECT_CHARGE
+	if (typec_is_cc_open()) {
+		mutex_lock(&tcpc->access_lock);
+		tcpc->pd_during_direct_charge = false;
+		mutex_unlock(&tcpc->access_lock);
 	}
+#endif	/* CONFIG_USB_PD_DIRECT_CHARGE */
+#else
+	tcpc_reset_typec_debounce_timer(tcpc);
 #endif	/* CONFIG_USB_POWER_DELIVERY */
 	return 0;
 }

@@ -240,7 +240,7 @@ static bool select_charging_current_limit(struct mtk_charger *info,
 		if (pdata->input_current_limit <= 0) {
 			pdata->input_current_limit = STORE_MODE_INPUT_CURRENT_LIMIT;
 		}
-		chr_err("store mode charge current limit : %d",
+		chr_err("store mode charge current limit: %d",
 				pdata->charging_current_limit);
 		is_basic = true;
 		goto done;
@@ -310,7 +310,7 @@ static bool select_charging_current_limit(struct mtk_charger *info,
 	}
 
 	/*fix pdo set current as 2.8A and input set as 1.6A */
-	if(info->pd_type == MTK_PD_CONNECT_PE_READY_SNK_PD30) {
+	if(is_pd_adapter(info)) {
 		pdata->input_current_limit = FIX_PDO_INPUT_CURRENT;
 		pdata->charging_current_limit = FIX_PDO_CHARGER_CURRENT;
 	}
@@ -329,10 +329,10 @@ static bool select_charging_current_limit(struct mtk_charger *info,
 	/* set current for 15w pd and pps when disable quick charge*/
 	if (info->disable_quick_charge && is_pd_adapter(info)) {
 		pdata->input_current_limit = FIX_PDO_COMMON_INPUT_CURRENT;
-		if (info->sw_jeita.cc <= info->data.ac_charger_current) {
+		if (info->sw_jeita.cc <= FIX_PDO_COMMON_CHARGER_CURRENT) {
 			pdata->charging_current_limit = info->sw_jeita.cc;
 		} else {
-			pdata->charging_current_limit = info->data.ac_charger_current;
+			pdata->charging_current_limit = FIX_PDO_COMMON_CHARGER_CURRENT;
 		}
 	}
 

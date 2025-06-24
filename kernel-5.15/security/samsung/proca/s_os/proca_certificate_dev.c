@@ -1,3 +1,20 @@
+// SPDX-License-Identifier: GPL-2.0
+/*
+ * Character device operation for control PROCA database
+ *
+ * Copyright (C) 2023 Samsung Electronics, Inc.
+ * Oleksandr Stanislavskyi, <o.stanislavs@samsung.com>
+ *
+ * This software is licensed under the terms of the GNU General Public
+ * License version 2, as published by the Free Software Foundation, and
+ * may be copied, distributed, and modified under those terms.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ */
+
 #include <linux/cdev.h>
 #include <linux/fs.h>
 #include <linux/slab.h>
@@ -130,15 +147,15 @@ ssize_t read_all_certificates(char **return_buffer, size_t *len, struct certific
 		entry = list_entry(l, struct certificate_entry, list);
 		if (entry->certificate) {
 		/* Alloc memory and encode certificate */
-			encoded_cert = kzalloc(BASE64_CHARS(entry->certificate_size) + 1, GFP_KERNEL);
+			encoded_cert = kzalloc(BASE64_CHARS(entry->certificate_size) + 1,
+										GFP_KERNEL);
 			if (!encoded_cert) {
 				mutex_unlock(&proca_db->lock);
 				return -ENOMEM;
 			}
 			base64_encode((const u8 *)entry->certificate,
-									entry->certificate_size, encoded_cert);
-		}
-		else {
+				      entry->certificate_size, encoded_cert);
+		} else {
 			encoded_cert = kzalloc(strlen("NULL") + 1, GFP_KERNEL);
 			if (!encoded_cert) {
 				mutex_unlock(&proca_db->lock);
@@ -193,8 +210,7 @@ static ssize_t proca_dev_read_cert(struct file *filp, char __user *buf,
 	if (strncmp(cmd_buff, cmd[GET_CMD], strlen(cmd[GET_CMD])) == 0) {
 		/* Get certificate for the passed file path */
 		res = read_certificate(&return_buffer, &len, buf, count);
-	}
-	else if (strncmp(cmd_buff, cmd[TEST_LIST_CMD], strlen(cmd[TEST_LIST_CMD])) == 0) {
+	} else if (strncmp(cmd_buff, cmd[TEST_LIST_CMD], strlen(cmd[TEST_LIST_CMD])) == 0) {
 		/* Read All certificates from test db*/
 		res = read_all_certificates(&return_buffer, &len, &proca_test_db);
 	}
@@ -230,8 +246,7 @@ static ssize_t proca_dev_write_cert(struct file *filp, const char __user *buf,
 		cmd_buf = kzalloc(count, GFP_KERNEL);
 		if (!cmd_buf)
 			return -ENOMEM;
-	}
-	else
+	} else
 		return -EINVAL;
 
 	ret = simple_write_to_buffer(cmd_buf, count, f_pos, buf, count);

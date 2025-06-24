@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: GPL-2.0
+
 config = {
     "header": {
         "uuid": "283df57d-cc04-4f9f-ae5a-9c8140dd1e53",
@@ -12,7 +14,7 @@ config = {
         "file": "security_proca.py",
         "location": [
             {
-                "src": "*.c *.h *.asn1 Makefile Kconfig",
+                "src": "*.c *.h *.asn1 *.S *.der Makefile Kconfig",
                 "dst": "security/samsung/proca/",
             },
             {

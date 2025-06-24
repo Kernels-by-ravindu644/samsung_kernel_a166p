@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: GPL-2.0 */
 /*
  * PROCA logging definitions
  *
@@ -28,6 +29,26 @@
 #define PROCA_INFO_LOG(msg, ...) pr_info("PROCA: "msg, ##__VA_ARGS__)
 
 #define PROCA_WARN_LOG(msg, ...) pr_warn("PROCA: "msg, ##__VA_ARGS__)
+
+#ifdef CONFIG_PROCA_DEBUG
+#define PROCA_BUG() \
+	do { \
+		BUG(); \
+	} while (0)
+#else
+#define PROCA_BUG() \
+	do { \
+		PROCA_ERROR_LOG("BUG detected in function %s at %s:%d\n", \
+				__func__, __FILE__, __LINE__); \
+		return -EINVAL; \
+	} while (0)
+#endif
+
+#define PROCA_BUG_ON(cond) \
+	do { \
+		if (unlikely(cond)) \
+			PROCA_BUG(); \
+	} while (0)
 
 #endif /* _LINUX_PROCA_LOG_H */
 

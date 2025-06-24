@@ -2252,6 +2252,14 @@ struct STR_CMD_HANDLER str_cmd_handlers[] = {
 		.policy    = u8_policy,
 		.u4PolicySize = ARRAY_SIZE(u8_policy)
 	},
+	{
+		.pcCmdStr  = CMD_SET_CUSTOM_TX_POWER_CALLING,
+		.pfHandler = testmode_set_custom_tx_power_calling,
+		.argPolicy = VERIFY_EXACT_ARG_NUM,
+		.ucArgNum  = COMMON_CMD_SET_ARG_NUM(13),
+		.policy    = NULL,
+		.u4PolicySize = 0
+	},
 /*
  *	{
  *		.pcCmdStr  = <command string>,

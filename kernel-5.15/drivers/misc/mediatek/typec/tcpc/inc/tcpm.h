@@ -876,6 +876,9 @@ extern int unregister_tcp_dev_notifier(struct tcpc_device *tcpc,
 				struct notifier_block *nb, uint8_t flags);
 
 extern int tcpm_shutdown(struct tcpc_device *tcpc);
+extern int tcpm_check_suspend_pending(struct tcpc_device *tcpc);
+extern int tcpm_suspend(struct tcpc_device *tcpc);
+extern void tcpm_resume(struct tcpc_device *tcpc);
 
 extern int tcpm_inquire_remote_cc(struct tcpc_device *tcpc,
 	uint8_t *cc1, uint8_t *cc2, bool from_ic);
@@ -1289,6 +1292,15 @@ static inline int unregister_tcp_dev_notifier(struct tcpc_device *tcpc,
 static inline int tcpm_shutdown(struct tcpc_device *tcpc)
 {
 	return TCPM_ERROR_NO_IMPLEMENT;
+}
+
+static inline int tcpm_suspend(struct tcpc_device *tcpc)
+{
+	return 0;
+}
+
+static inline void tcpm_resume(struct tcpc_device *tcpc)
+{
 }
 
 static inline int tcpm_inquire_remote_cc(struct tcpc_device *tcpc,

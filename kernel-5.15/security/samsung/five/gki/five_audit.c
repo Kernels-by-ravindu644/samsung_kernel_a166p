@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
  * Audit calls for FIVE audit subsystem.
  *
@@ -22,7 +23,6 @@
 #include "five_audit.h"
 #include "five_cache.h"
 #include "five_porting.h"
-#include "five_dsms.h"
 
 static void five_audit_msg(struct task_struct *task, struct file *file,
 		const char *op, enum task_integrity_value prev,
@@ -61,24 +61,6 @@ void five_audit_err(struct task_struct *task, struct file *file,
 		enum task_integrity_value tint, const char *cause, int result)
 {
 	five_audit_msg(task, file, op, prev, tint, cause, result);
-
-	if (!result) {
-		char comm[TASK_COMM_LEN];
-		struct task_struct *tsk = task ? task : current;
-
-		five_dsms_reset_integrity(get_task_comm(comm, tsk), 0, op);
-	}
-}
-
-void five_audit_sign_err(struct task_struct *task, struct file *file,
-		const char *op, enum task_integrity_value prev,
-		enum task_integrity_value tint, const char *cause, int result)
-{
-	char comm[TASK_COMM_LEN];
-	struct task_struct *tsk = task ? task : current;
-
-	get_task_comm(comm, tsk);
-	five_dsms_sign_err(comm, result);
 }
 
 static void five_audit_msg(struct task_struct *task, struct file *file,

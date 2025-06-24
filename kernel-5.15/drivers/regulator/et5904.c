@@ -712,9 +712,11 @@ static int et5904_i2c_probe(struct i2c_client *i2c,
 	switch (data) {
 	case ET5904_DEVICE_ID:
 		chip->chip_id = ET5904;
+		ET_DBG("Third party ldo chip_id AW37004DNR");
 		break;
 	case DIO8015_DEVICE_ID:
 		chip->chip_id = DIO8015;
+		ET_DBG("Third party ldo chip_id DIO8015CN10");
 		break;
 	default:
 		dev_err(chip->dev, "Unsupported device id = 0x%x.\n", data);
@@ -746,7 +748,11 @@ static int et5904_i2c_probe(struct i2c_client *i2c,
 	}
 
 	dev_info(chip->dev, "initialize regulator success");
-	//ret = regmap_write(chip->regmap, 0x0e, 0x0f);
+
+	ret = regmap_write(chip->regmap, 0x02, 0x0f);
+	regmap_read(chip->regmap, 0x02, &data);
+	ET_DBG("LDO Discharge mode 0x%02x data=0x%02x", 0x02,
+	       data);
 error:
 	return ret;
 }

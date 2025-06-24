@@ -21,9 +21,17 @@ static int bootmode;
 /* line limits per second, 0: no limit, 1: disable dbg log */
 static unsigned int dbg_log_limit = 200;
 module_param(dbg_log_limit, uint, 0644);
+static unsigned int mn_limit = 10000;
+module_param(mn_limit, uint, 0644);
+
+#define LOG_LIST_LIMIT 1000
+static unsigned int dbg_log_list_count = 0;
+static unsigned int dbg_log_wait = 0;
+char *log_limit_msg = "pd_dbg_info msg is limited";
 
 static DEFINE_MUTEX(list_lock);
 static LIST_HEAD(msg_list);
+static size_t mn_cnt;
 static void print_out_dwork_fn(struct work_struct *work);
 static DECLARE_DELAYED_WORK(print_out_dwork, print_out_dwork_fn);
 
@@ -36,6 +44,9 @@ static void clean_up_list(void)
 		list_del(&mn->list);
 		kfree(mn);
 	}
+	dbg_log_list_count = 0;
+	dbg_log_wait = 0;
+	mn_cnt = 0;
 	mutex_unlock(&list_lock);
 }
 
@@ -44,7 +55,7 @@ static void print_out_dwork_fn(struct work_struct *work)
 	struct delayed_work *dwork = to_delayed_work(work);
 	struct msg_node *mn = NULL;
 	unsigned long j = jiffies;
-	bool empty = false;
+	bool empty = true, loop = false;
 	static unsigned long begin;
 	static int printed;
 
@@ -61,27 +72,44 @@ static void print_out_dwork_fn(struct work_struct *work)
 		printed = 0;
 	}
 
-	if (dbg_log_limit && printed >= dbg_log_limit) {
+	if (dbg_log_limit && printed >= dbg_log_limit && mn_cnt <= mn_limit) {
 		mod_delayed_work(system_wq, dwork, begin + HZ - j + 1);
 		return;
 	}
-
+loop:
 	mutex_lock(&list_lock);
 	if (list_empty(&msg_list))
 		goto list_unlock;
 	mn = list_first_entry(&msg_list, struct msg_node, list);
 	list_del(&mn->list);
+	dbg_log_list_count--;
 	empty = list_empty(&msg_list);
+	if (empty) {
+		mn_cnt = 0;
+		loop = false;
+	} else
+		loop = --mn_cnt > mn_limit;
 list_unlock:
 	mutex_unlock(&list_lock);
 	if (!mn)
 		return;
 	if (!empty)
 		schedule_delayed_work(dwork, 0);
+	else {
+		dbg_log_wait = 0;
+		dbg_log_list_count = 0;
+	}
 
 	pr_notice("%s", mn->msg);
 	printed++;
 	kfree(mn);
+	mn = NULL;
+	if (!empty) {
+		if (loop)
+			goto loop;
+		else
+			schedule_delayed_work(dwork, 0);
+	}
 }
 
 int pd_dbg_info(const char *fmt, ...)
@@ -100,30 +128,46 @@ int pd_dbg_info(const char *fmt, ...)
 		return -EPERM;
 	}
 
+	if (dbg_log_wait)
+		return -EPERM;
+
+	if (dbg_log_list_count > LOG_LIST_LIMIT)
+		dbg_log_wait = 1;
+
 	ts = local_clock();
 	rem_msec = do_div(ts, NSEC_PER_SEC) / NSEC_PER_MSEC;
 	ts_size = snprintf(NULL, 0, "<%5lu.%03lu>", (unsigned long)ts, rem_msec);
-	va_start(args, fmt);
-	msg_size = vsnprintf(NULL, 0, fmt, args);
-	va_end(args);
+	if (dbg_log_wait)
+		msg_size = strlen(log_limit_msg);
+	else {
+		va_start(args, fmt);
+		msg_size = vsnprintf(NULL, 0, fmt, args);
+		va_end(args);
+	}
 
 	mn = kzalloc(sizeof(*mn) + ts_size + msg_size + 1, GFP_KERNEL);
 	if (!mn)
 		return -ENOMEM;
 
 	size = snprintf(mn->msg, ts_size + 1, "<%5lu.%03lu>", (unsigned long)ts, rem_msec);
-	WARN(ts_size != size, "different return values (%lu and %lu) from pd_dbg_info()",
-	     ts_size, size);
+	WARN(ts_size != size, "different return values (%zu and %zu) from %s()",
+	     ts_size, size, __func__);
 
-	va_start(args, fmt);
-	size = vsnprintf(mn->msg + ts_size, msg_size + 1, fmt, args);
-	va_end(args);
+	if (dbg_log_wait)
+		size = snprintf(mn->msg + ts_size, msg_size + 1, "%s",  log_limit_msg);
+	else {
+		va_start(args, fmt);
+		size = vsnprintf(mn->msg + ts_size, msg_size + 1, fmt, args);
+		va_end(args);
+	}
 	WARN(msg_size != size,
-	     "different return values (%lu and %lu) from pd_dbg_info(\"%s\", ...)",
-	     msg_size, size, fmt);
+	     "different return values (%zu and %zu) from %s(\"%s\", ...)",
+	     msg_size, size, __func__, fmt);
 
 	mutex_lock(&list_lock);
 	list_add_tail(&mn->list, &msg_list);
+	dbg_log_list_count++;
+	mn_cnt++;
 	mutex_unlock(&list_lock);
 	schedule_delayed_work(&print_out_dwork, 0);
 

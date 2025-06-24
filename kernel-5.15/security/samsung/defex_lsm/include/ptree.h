@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: GPL-2.0 */
 /*
  * Copyright (c) 2021-2022 Samsung Electronics Co., Ltd. All Rights Reserved
  *
@@ -36,9 +37,12 @@
 /* Bit A is stored directly in the bit below */
 #define PTREE_DATA_BITA_MASK 128
 
-#define PTREE_DATA_MASK 255 /* ORs all PTREE_DATA masks */
+#define PTREE_DATA_MASK 255 /* ORs all PTREE_DATA masks. An unsigned field
+			     * of PTREE_DATATYPE_SIZE bytes must be enough
+			     * to hold this value
+			     */
 
-/* Modifiers for search behavior */
+/* Modifiers for search behavior. They must fit in an int. */
 #define PTREE_FIND_CONTINUE 256 /* pptree_find should continue from
 				 * previous result, if any
 				 */
@@ -49,6 +53,9 @@
 #define PTREE_FIND_PEEKED 1024 /* go to where a previous search would have
 				* gone had it not used PTREE_FIND_PEEKED
 				*/
+
+/* Size (bytes) of pptree's unsigned field holding data type flags */
+#define PTREE_DATATYPE_SIZE 1
 
 /* ***************************************************************************
  * Declarations needed for _using_ exported P-trees
@@ -114,13 +121,26 @@ struct PPTreeContext {
 	const unsigned char *last, *lastPeeked;
 	unsigned int childCount;
 };
+// Match size of strncmp's last argument
+#if defined(__KERNEL__) && !defined(__HAVE_ARCH_STRNCMP)
+typedef __kernel_size_t Str_size_t;
+#else
+typedef size_t Str_size_t;
+#endif
+/* Provisional flag. If 1, call string comparator indirectly as it should be
+ * done [causes CFI exception in VINCE]; if 0, test pointer before call
+ */
+#define STRNCMP_BY_PVALUE 0
 /* Search for given path. Return 0 if not found, 1 otherwise
  * (and fills in *ctx).
+ * The last argument is a function (if 0, strncmp is used) for comparing a
+ * runtime text (first arg) against a policy text (second arg).
  * See PPTreeContext for where the search starts.
  */
 extern int pptree_find(const struct PPTree *tree,
 		       const char **path, int pathLen,
-		       struct PPTreeContext *ctx);
+		       struct PPTreeContext *ctx,
+		       int (*strncmp_)(const char *, const char *, Str_size_t));
 /* Maximum key length, mostly an arbitrary limit against DoS */
 #define PTREE_FINDPATH_MAX 8000
 /* Search for a given path.
@@ -130,6 +150,18 @@ extern int pptree_find(const struct PPTree *tree,
  */
 extern int pptree_find_path(const struct PPTree *tree, const char *path,
 			    char delim, struct PPTreeContext *ctx);
+/* Search for a given path.
+ * Similar to pptree_find_path, allow customizing the string comparator
+ * (strncmp if 0).
+ */
+extern int pptree_find_path_c(const struct PPTree *tree, const char *path,
+			      char delim, struct PPTreeContext *ctx,
+			      int (*strncmp_)(const char *, const char *, Str_size_t));
+/* Given a search context, calculate offset from root node. Depends on a
+ * previous search, if any
+ */
+extern int pptree_get_offset(const struct PPTree *tree,
+		     struct PPTreeContext *ctx);
 /* Returns number of children.
  * See PPTreeContext for which is the parent node.
  */

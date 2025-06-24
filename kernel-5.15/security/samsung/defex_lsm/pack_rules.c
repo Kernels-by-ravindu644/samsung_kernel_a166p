@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
  * Copyright (c) 2018 Samsung Electronics Co., Ltd. All Rights Reserved
  *
@@ -6,6 +7,8 @@
  * as published by the Free Software Foundation.
  */
 
+#define __PACK_RULES20
+
 #include <errno.h>
 #include <limits.h>
 #include <stdio.h>
@@ -13,8 +16,10 @@
 #include <string.h>
 #include <sys/stat.h>
 #include "include/defex_rules.h"
+#include "include/defex_tree.h"
 
-#define SAFE_STRCOPY(dst, src) do { strncpy(dst, src, sizeof(dst)); dst[sizeof(dst) - 1] = 0; } while (0)
+#define SAFE_STRCOPY(dst, src) do { memccpy(dst, src, 0, sizeof(dst)); dst[sizeof(dst) - 1] = 0; \
+				} while (0)
 
 #ifndef ARRAY_SIZE
 #define ARRAY_SIZE(x) (sizeof(x) / sizeof((x)[0]))
@@ -25,6 +30,7 @@ const struct feature_match_entry feature_match[] = {
 	{"feature_ped_exception", feature_ped_exception},
 	{"feature_immutable_path_open", feature_immutable_path_open},
 	{"feature_immutable_path_write", feature_immutable_path_write},
+	{"feature_immutable_root", feature_immutable_root},
 	{"feature_immutable_src_exception", feature_immutable_src_exception},
 	{"feature_immutable_dst_exception", feature_immutable_dst_exception},
 	{"feature_umhbin_path", feature_umhbin_path},
@@ -36,67 +42,88 @@ struct file_list_item {
 #ifdef DEFEX_INTEGRITY_ENABLE
 	char integrity[INTEGRITY_LENGTH * 2 + 1];
 #endif /* DEFEX_INTEGRITY_ENABLE */
+	unsigned int features;
 	int is_recovery;
 };
 
-struct rule_item_struct *defex_packed_rules;
-int packfiles_count, packfiles_size;
+unsigned int packfiles_size;
 
-struct file_list_item *file_list = NULL;
-int file_list_count = 0;
+struct file_list_item *file_list;
+int file_list_count;
 
 #ifndef DEFEX_DEBUG_ENABLE
-int debug_ifdef_is_active = 0;
+int debug_ifdef_is_active;
 void process_debug_ifdef(const char *src_str);
 #endif
 
 /* Show rules vars */
-const char header_name[16] = {"DEFEX_RULES_FILE"};
+const char header_name[16] = { "DEFEX_RULES_FILE" };
 static char work_path[512];
-static int global_data_size;
+static unsigned int global_data_size;
+struct d_tree extern_tree;
 
-/* Suplementary functions for packing rules */
-struct rule_item_struct *create_file_item(const char *name, int l);
-struct rule_item_struct *add_file_item(struct rule_item_struct *base, const char *name, int l);
-struct rule_item_struct *lookup_dir(struct rule_item_struct *base, const char *name, int l, int for_recovery);
-struct rule_item_struct *add_file_path(const char *file_path, int for_recovery);
-void add_rule(const char *part1, const char *part2, int for_recovery,
-		enum feature_types feature, const char *integrity);
-void addline2tree(char *src_line, enum feature_types feature);
+struct d_tree rules_tree;
+unsigned char *rules_data;
+int rules_data_size;
+
+unsigned char *text_data;
+int text_data_size;
+
+unsigned char *integrity_data;
+int integrity_data_size;
+
+unsigned char *bin_data;
+int bin_data_size;
+
+struct d_tree_item work_item;
+
+struct d_tree_item *d_tree_arr[65000];
+unsigned int d_tree_arr_count;
+
+
+void add_rule(const char *part1, const char *part2, unsigned int for_recovery,
+	unsigned int feature, const char *integrity);
+void addline2tree(char *src_line, unsigned int feature);
 char *extract_rule_text(const char *src_line);
-int lookup_tree(const char *file_path, int attribute, int for_recovery);
 int store_tree(FILE *f, FILE *f_bin);
 
 #ifdef DEFEX_INTEGRITY_ENABLE
 /* Transfer string to hex */
 char null_integrity[INTEGRITY_LENGTH * 2 + 1];
-unsigned char ascii_to_hex(char input);
-int string_to_hex(const char *input, size_t inputLen, unsigned char *output);
+unsigned char byte_hex_to_bin(char input);
+int string_hex_to_bin(const char *input, size_t inputLen, unsigned char *output);
 #endif /* DEFEX_INTEGRITY_ENABLE */
 
 /* Suplementary functions for reducing rules */
-int str_to_feature(const char *str);
+unsigned int str_to_feature(const char *str);
 int remove_substr(char *str, const char *part);
 void trim_cr_lf(char *str);
-char* remove_redundant_chars(char *str);
+char *remove_redundant_chars(char *str);
 int check_path_in_use(const char *path);
 int load_file_list(const char *name);
 int lookup_file_list(const char *rule, int for_recovery);
 
 /* Suplementary functions for showing rules */
-void feature_to_str(char *str, unsigned short flags);
-int check_array_size(struct rule_item_struct *ptr);
-int parse_items(struct rule_item_struct *base, int path_length, int level);
-int defex_show_structure(void *packed_rules, int rules_size);
+void feature_to_str(char *str, unsigned int flags);
+int parse_items(struct d_tree_item *base, size_t path_length, int level);
+int defex_show_structure(void *packed_rules, size_t rules_size);
 
 /* Main processing functions */
-int reduce_rules(const char *source_rules_file, const char *reduced_rules_file, const char *list_file);
-int pack_rules(const char *source_rules_file, const char *packed_rules_file, const char *packed_rules_binfile);
+int reduce_rules(const char *source_rules_file, const char *reduced_rules_file,
+		const char *list_file);
+int pack_rules(const char *source_rules_file, const char *packed_rules_file,
+		const char *packed_rules_binfile);
 int parse_packed_bin_file(const char *source_bin_file);
 
-int str_to_feature(const char *str)
+#ifndef __visible_for_testing
+#define __visible_for_testing static
+#endif
+
+#include "core/defex_tree.c"
+
+unsigned int str_to_feature(const char *str)
 {
-	int i;
+	size_t i;
 
 	for (i = 0; i < ARRAY_SIZE(feature_match); i++) {
 		if (strstr(str, feature_match[i].feature_name))
@@ -105,9 +132,9 @@ int str_to_feature(const char *str)
 	return 0;
 }
 
-void feature_to_str(char *str, unsigned short flags)
+void feature_to_str(char *str, unsigned int flags)
 {
-	int i;
+	size_t i;
 
 	str[0] = 0;
 	for (i = 0; i < ARRAY_SIZE(feature_match); i++)
@@ -125,17 +152,16 @@ void feature_to_str(char *str, unsigned short flags)
 
 int remove_substr(char *str, const char *part)
 {
-	int l, part_l, found = 0;
+	size_t l, part_l;
 	char *ptr;
 
 	l = strnlen(str, PATH_MAX - 1);
 	ptr = strstr(str, part);
 	if (ptr) {
 		part_l = strnlen(part, 32) - 1;
-		memmove(ptr, ptr + part_l, l - (ptr - str) - part_l + 1);
-		found = 1;
+		memmove(ptr, ptr + part_l, l - (size_t)(ptr - str) - part_l + 1);
 	}
-	return found;
+	return (ptr != NULL);
 }
 
 void trim_cr_lf(char *str)
@@ -152,12 +178,12 @@ void trim_cr_lf(char *str)
 
 char *remove_redundant_chars(char *str)
 {
-	int l;
+	size_t l;
 
 	/* skip hash values in the begin */
 	str += 65;
 	trim_cr_lf(str);
-	l = strnlen(str, PATH_MAX - 1);
+	l = strnlen(str, (size_t)PATH_MAX - 1);
 	/* remove starting dot or space */
 	while (l && (*str == '.' || *str == ' '))
 		str++;
@@ -166,7 +192,7 @@ char *remove_redundant_chars(char *str)
 
 int check_path_in_use(const char *path)
 {
-	int i;
+	size_t i;
 	static const char * const path_list[] = {
 		"/root/",
 		"/product",
@@ -189,144 +215,6 @@ int check_path_in_use(const char *path)
 	return 0;
 }
 
-struct rule_item_struct *create_file_item(const char *name, int l)
-{
-	struct rule_item_struct *item;
-	unsigned int offset;
-
-	if (!name)
-		l = 0;
-	offset = packfiles_size;
-	packfiles_size += (sizeof(struct rule_item_struct) + l);
-	packfiles_count++;
-	item = GET_ITEM_PTR(offset, defex_packed_rules);
-	item->next_file = 0;
-	item->next_level = 0;
-	item->feature_type = 0;
-	item->size = l;
-#ifdef DEFEX_INTEGRITY_ENABLE
-	memset(item->integrity, 0, INTEGRITY_LENGTH);
-#endif /* DEFEX_INTEGRITY_ENABLE */
-	if (l)
-		memcpy(item->name, name, l);
-	return item;
-}
-
-struct rule_item_struct *add_file_item(struct rule_item_struct *base, const char *name, int l)
-{
-	struct rule_item_struct *item, *new_item = NULL;
-
-	if (!base)
-		return new_item;
-
-	new_item = create_file_item(name, l);
-	if (!base->next_level) {
-		base->next_level = GET_ITEM_OFFSET(new_item, defex_packed_rules);
-	} else {
-		item = GET_ITEM_PTR(base->next_level, defex_packed_rules);
-		while (item->next_file)
-			item = GET_ITEM_PTR(item->next_file, defex_packed_rules);
-		item->next_file = GET_ITEM_OFFSET(new_item, defex_packed_rules);
-	}
-	return new_item;
-}
-
-struct rule_item_struct *lookup_dir(struct rule_item_struct *base, const char *name, int l, int for_recovery)
-{
-	struct rule_item_struct *item = NULL;
-	unsigned int offset;
-
-	if (!base || !base->next_level)
-		return item;
-	item = GET_ITEM_PTR(base->next_level, defex_packed_rules);
-	do {
-		if ((!(item->feature_type & feature_is_file)
-			|| (!!(item->feature_type & feature_for_recovery)) == for_recovery)
-			&& item->size == l
-			&& !memcmp(name, item->name, l)) return item;
-		offset = item->next_file;
-		item = GET_ITEM_PTR(offset, defex_packed_rules);
-	} while (offset);
-	return NULL;
-}
-
-struct rule_item_struct *add_file_path(const char *file_path, int for_recovery)
-{
-	const char *ptr, *next_separator;
-	struct rule_item_struct *base, *cur_item = NULL;
-	int l;
-
-	if (!file_path || *file_path != '/')
-		return NULL;
-	if (!defex_packed_rules) {
-		packfiles_count = 0;
-		packfiles_size = 0;
-		defex_packed_rules = calloc(sizeof(struct rule_item_struct),  100 * 1024);
-		if (!defex_packed_rules) {
-			printf("WARNING: Can not create the new item!\n");
-			exit(-1);
-		}
-		create_file_item(header_name, sizeof(header_name));
-	}
-	base = defex_packed_rules;
-	ptr = file_path + 1;
-	do {
-		next_separator = strchr(ptr, '/');
-		if (!next_separator)
-			l = strlen(ptr);
-		else
-			l = next_separator - ptr;
-		if (!l)
-			return NULL; /* two slashes in sequence */
-		cur_item = lookup_dir(base, ptr, l, for_recovery);
-		if (!cur_item) {
-			cur_item = add_file_item(base, ptr, l);
-			/* slash wasn't found, it's a file */
-			if (!next_separator) {
-				cur_item->feature_type |= feature_is_file;
-				if (for_recovery)
-					cur_item->feature_type |= feature_for_recovery;
-			}
-		}
-		base = cur_item;
-		ptr += l;
-		if (next_separator)
-			ptr++;
-	} while (*ptr);
-	return cur_item;
-}
-
-int lookup_tree(const char *file_path, int attribute, int for_recovery)
-{
-	const char *ptr, *next_separator;
-	struct rule_item_struct *base, *cur_item = NULL;
-	int l;
-
-	if (!file_path || *file_path != '/' || !defex_packed_rules)
-		return 0;
-	base = defex_packed_rules;
-	ptr = file_path + 1;
-	do {
-		next_separator = strchr(ptr, '/');
-		if (!next_separator)
-			l = strlen(ptr);
-		else
-			l = next_separator - ptr;
-		if (!l)
-			return 0;
-		cur_item = lookup_dir(base, ptr, l, for_recovery);
-		if (!cur_item)
-			break;
-		if (cur_item->feature_type & attribute)
-			return 1;
-		base = cur_item;
-		ptr += l;
-		if (next_separator)
-			ptr++;
-	} while (*ptr);
-	return 0;
-}
-
 char *extract_rule_text(const char *src_line)
 {
 	char *start_ptr, *end_ptr;
@@ -344,7 +232,7 @@ char *extract_rule_text(const char *src_line)
 }
 
 #ifdef DEFEX_INTEGRITY_ENABLE
-unsigned char ascii_to_hex(char input)
+unsigned char byte_hex_to_bin(char input)
 {
 	if (input >= 0x30 && input <= 0x39)
 		return (unsigned char)input - 0x30;
@@ -355,12 +243,14 @@ unsigned char ascii_to_hex(char input)
 	return 0xFF;
 }
 
-int string_to_hex(const char *input, size_t inputLen, unsigned char *output)
+int string_hex_to_bin(const char *input, size_t inputLen, unsigned char *output)
 {
 	unsigned char convert1, convert2;
-	size_t i;
+	char c;
+	const char *ptr;
+	size_t i, retry_count = 16;
 
-	if (input == NULL || output == NULL)
+	if (!input || !output)
 		return 0;
 
 	/* Check input is a paired value. */
@@ -371,47 +261,82 @@ int string_to_hex(const char *input, size_t inputLen, unsigned char *output)
 	inputLen >>= 1;
 	memset(output, 0, inputLen);
 
-	/* Convert ascii code to hexa. */
-	for (i = 0; i < inputLen; i++) {
-		convert1 = ascii_to_hex(input[2*i]);
-		convert2 = ascii_to_hex(input[2*i+1]);
-
-		if (convert1 == 0xFF || convert2 == 0xFF)
-			return 0;
-
-		output[i] = (char)((convert1 << 4) | convert2);
-	}
-	return 1;
+	do {
+		ptr = input;
+		/* Convert hex code to bin. */
+		for (i = 0; i < inputLen; i++) {
+			c = *ptr++;
+			if (!c)
+				return 0;
+			convert1 = byte_hex_to_bin(c);
+			c = *ptr++;
+			if (!c)
+				return 0;
+			convert2 = byte_hex_to_bin(c);
+			if (convert1 == 0xFF || convert2 == 0xFF)
+				return 0;
+			output[i] = (unsigned char)((convert1 << 4) | convert2);
+		}
+		if (i == inputLen)
+			return (int)inputLen;
+		input++;
+	} while (--retry_count);
+	return 0;
 }
 #endif /* DEFEX_INTEGRITY_ENABLE */
 
-void add_rule(const char *part1, const char *part2, int for_recovery, enum feature_types feature, const char *integrity)
+void add_rule(const char *part1, const char *part2, unsigned int for_recovery,
+		unsigned int feature, const char *integrity)
 {
-	struct rule_item_struct *item_part1 = NULL, *item_part2;
+	struct d_tree_item *item_part1 = NULL, *item_part2 = NULL;
+	unsigned int part2_feature = 0;
+#ifdef DEFEX_INTEGRITY_ENABLE
+	int index;
+	unsigned char tmp_integrity[INTEGRITY_LENGTH];
+#endif /* DEFEX_INTEGRITY_ENABLE */
 
 	(void)integrity;
-	if (part1) {
-		item_part1 = add_file_path(part1, for_recovery);
-		if (item_part1) {
-			item_part1->feature_type |= feature;
-			if (part2 && item_part1->feature_type & feature_is_file) {
-				item_part2 = add_file_path(part2, 0);
-				if (item_part2)
-					item_part2->feature_type |= feature_immutable_dst_exception;
 
-				/* add the reference from part1 to part2 */
-				if (item_part2)
-					item_part1->next_level = GET_ITEM_OFFSET(item_part2, defex_packed_rules);
-			}
+	/* Define the feature value for second part of the rule */
+	if (feature & feature_immutable_src_exception)
+		part2_feature |= feature_immutable_dst_exception;
+	if (feature & feature_immutable_root)
+		part2_feature |= feature_immutable_root;
+
+	if (part1) {
+		item_part1 = add_tree_path(part1, for_recovery);
+		if (item_part1)
+			item_part1->features |= feature;
+	}
+	if (part2) {
+		item_part2 = add_tree_path(part2, 0);
+		if (item_part2)
+			item_part2->features |= part2_feature;
+	}
+	/* add the reference from part1 to part2 */
+	if (item_part1 && item_part2) {
+		d_tree_add_link(item_part1, item_part2->item_index, feature);
+		d_tree_add_link(item_part2, item_part1->item_index, part2_feature);
+	}
+
 #ifdef DEFEX_INTEGRITY_ENABLE
-			if (integrity)
-				string_to_hex(integrity + 1, INTEGRITY_LENGTH * 2, item_part1->integrity);
-#endif /* DEFEX_INTEGRITY_ENABLE */
+	if (integrity && item_part1) {
+		if (string_hex_to_bin(integrity + 1, INTEGRITY_LENGTH * 2, tmp_integrity)
+				== INTEGRITY_LENGTH) {
+			index = add_table_item(d_tree_integrity_table, &rules_tree,
+				tmp_integrity, INTEGRITY_LENGTH, 0);
+			if (index) {
+				item_part1->features |= d_tree_item_integrity;
+				//item_part1->features |= feature_integrity_check;
+				item_part1->integrity_index = (unsigned short)index;
+			}
 		}
 	}
+#endif /* DEFEX_INTEGRITY_ENABLE */
+
 }
 
-void addline2tree(char *src_line, enum feature_types feature)
+void addline2tree(char *src_line, unsigned int feature)
 {
 	char *part1, *part2;
 	char *n_sign = NULL, *r_sign = NULL;
@@ -447,20 +372,74 @@ void addline2tree(char *src_line, enum feature_types feature)
 
 int store_tree(FILE *f, FILE *f_bin)
 {
-	unsigned char *ptr = (unsigned char *)defex_packed_rules;
+	unsigned char *ptr = (unsigned char *)rules_data;
 	static char work_str[4096];
-	int i, offset = 0, index = 0;
+	unsigned int i, j, offset = 0, index = 0;
+	unsigned int table_size;
+	struct d_tree_item *item, *root_item = d_tree_arr[0];
+	unsigned short *link_array;
+	unsigned int link_size = 0;
 
-	if (packfiles_size)
-		defex_packed_rules->data_size = packfiles_size;
+	packfiles_size = 0;
+	rules_tree.root_offset = (unsigned int)d_tree_write_header(rules_data, &rules_tree);
+	root_item->item_offset = 0;
+	root_item->item_size = d_tree_calc_item_size(root_item);
+	packfiles_size += root_item->item_size;
+	d_tree_store_to_buffer(root_item);
+
+	rules_tree.data_size = packfiles_size + rules_tree.root_offset;
+
+	if (rules_tree.text_count) {
+		rules_tree.text_offset = rules_tree.data_size;
+		table_size = D_TREE_DWORD_REF(text_data, 0);
+		rules_tree.data_size += table_size;
+		rules_tree.text_data = rules_tree.data;
+		memcpy(D_TREE_GET_PTR(rules_data, rules_tree.text_offset), text_data, table_size);
+	}
+
+	if (rules_tree.integrity_count) {
+		rules_tree.integrity_offset = rules_tree.data_size;
+		table_size = D_TREE_DWORD_REF(integrity_data, 0);
+		rules_tree.data_size += table_size;
+		rules_tree.integrity_data = rules_tree.data;
+		memcpy(D_TREE_GET_PTR(rules_data, rules_tree.integrity_offset),
+			integrity_data, table_size);
+	}
+
+	if (rules_tree.bin_count) {
+
+		for (i = 1; i <= d_tree_arr_count; i++) {
+			item = d_tree_arr[i];
+			if (item && (item->features & d_tree_item_linked) && item->link_index) {
+				link_array =
+					(unsigned short *)d_tree_get_table_data(d_tree_bin_table,
+					&rules_tree, item->link_index, &link_size);
+				if (link_array && link_size) {
+					for (j = 0; j < (link_size / 2); j++) {
+						link_array[j] =
+							d_tree_arr[link_array[j]]->item_offset;
+					}
+				}
+			}
+		}
+
+		rules_tree.bin_offset = rules_tree.data_size;
+		table_size = D_TREE_DWORD_REF(bin_data, 0);
+		rules_tree.data_size += table_size;
+		rules_tree.bin_data = rules_tree.data;
+		memcpy(D_TREE_GET_PTR(rules_data, rules_tree.bin_offset), bin_data, table_size);
+	}
+	d_tree_write_header(rules_data, &rules_tree);
 
 	work_str[0] = 0;
 	fprintf(f, "#ifndef DEFEX_RAMDISK_ENABLE\n\n");
 	fprintf(f, "const unsigned char defex_packed_rules[] = {\n");
-	for (i = 0; i < packfiles_size; i++) {
+	for (i = 0; i < rules_tree.data_size; i++) {
 		if (index)
-			offset += snprintf(work_str + offset, sizeof(work_str) - offset, ", ");
-		offset += snprintf(work_str + offset, sizeof(work_str) - offset, "0x%02x", ptr[i]);
+			offset += (unsigned int)snprintf(work_str + offset,
+				sizeof(work_str) - offset, ", ");
+		offset += (unsigned int)snprintf(work_str + offset, sizeof(work_str) - offset,
+			"0x%02x", ptr[i]);
 		index++;
 		if (index == 16) {
 			fprintf(f, "\t%s,\n", work_str);
@@ -474,7 +453,7 @@ int store_tree(FILE *f, FILE *f_bin)
 	fprintf(f, "\n#endif /* DEFEX_RAMDISK_ENABLE */\n\n");
 	fprintf(f, "#define DEFEX_RULES_ARRAY_SIZE\t\t%d\n", packfiles_size);
 	if (f_bin)
-		fwrite(defex_packed_rules, 1, packfiles_size, f_bin);
+		fwrite(rules_data, 1, rules_tree.data_size, f_bin);
 	return 0;
 }
 
@@ -484,7 +463,7 @@ int load_file_list(const char *name)
 	char *str;
 	FILE *lst_file = NULL;
 	struct file_list_item *file_list_new;
-	static char work_str[PATH_MAX*2];
+	static char work_str[PATH_MAX * 2];
 
 	lst_file = fopen(name, "r");
 	if (!lst_file)
@@ -498,7 +477,8 @@ int load_file_list(const char *name)
 			remove_substr(str, "/root/");
 			found = remove_substr(str, "/recovery/");
 			file_list_count++;
-			file_list_new = realloc(file_list, sizeof(struct file_list_item) * file_list_count);
+			file_list_new = realloc(file_list,
+				sizeof(struct file_list_item) * (size_t)file_list_count);
 			if (!file_list_new) {
 				free(file_list);
 				printf("WARNING: Can not allocate the filelist item!\n");
@@ -506,8 +486,7 @@ int load_file_list(const char *name)
 			}
 			file_list = file_list_new;
 #ifdef DEFEX_INTEGRITY_ENABLE
-			strncpy(file_list[file_list_count - 1].integrity, work_str, INTEGRITY_LENGTH * 2);
-			file_list[file_list_count - 1].integrity[INTEGRITY_LENGTH * 2] = 0;
+			SAFE_STRCOPY(file_list[file_list_count - 1].integrity, work_str);
 #endif /* DEFEX_INTEGRITY_ENABLE */
 			SAFE_STRCOPY(file_list[file_list_count - 1].file_name, str);
 			file_list[file_list_count - 1].is_recovery = found;
@@ -520,20 +499,26 @@ int load_file_list(const char *name)
 int lookup_file_list(const char *rule, int for_recovery)
 {
 	int i;
+	size_t l;
 
+	l = strnlen(rule, PATH_MAX);
+	if (l < 2)
+		return -1;
 	for (i = 0; i < file_list_count; i++) {
 		if (file_list[i].is_recovery == for_recovery
-			&& !strncmp(file_list[i].file_name, rule, strnlen(rule, PATH_MAX))
-			&& !strncmp(file_list[i].file_name, rule, strnlen(file_list[i].file_name, PATH_MAX)))
-			return i+1;
+			&& !strncmp(file_list[i].file_name, rule, l)
+			&& !strncmp(file_list[i].file_name, rule, strnlen(file_list[i].file_name,
+				PATH_MAX)))
+			return i;
 	}
-	return 0;
+	return -1;
 }
 
 #ifndef DEFEX_DEBUG_ENABLE
 void process_debug_ifdef(const char *src_str)
 {
 	char *ptr;
+
 	ptr = strstr(src_str, "#ifdef DEFEX_DEBUG_ENABLE");
 	if (ptr) {
 		while (ptr > src_str) {
@@ -557,12 +542,13 @@ void process_debug_ifdef(const char *src_str)
 }
 #endif
 
-int reduce_rules(const char *source_rules_file, const char *reduced_rules_file, const char *list_file)
+int reduce_rules(const char *source_rules_file, const char *reduced_rules_file,
+		const char *list_file)
 {
 	int ret_val = -1;
-	int found_normal = 0, found_recovery = 0;
+	int found_normal = -1, found_recovery = -1;
 	char *rule, *colon_ptr;
-	static char work_str[PATH_MAX*2], tmp_str[PATH_MAX*2], rule_part1[PATH_MAX*2];
+	static char work_str[PATH_MAX * 2], tmp_str[PATH_MAX * 2], rule_part1[PATH_MAX * 2];
 	FILE *src_file = NULL, *dst_file = NULL;
 #ifdef DEFEX_INTEGRITY_ENABLE
 	char *line_end, *integrity_normal;
@@ -598,17 +584,18 @@ int reduce_rules(const char *source_rules_file, const char *reduced_rules_file, 
 				*colon_ptr = 0;
 			found_normal = lookup_file_list(rule_part1, 0);
 			found_recovery = lookup_file_list(rule_part1, 1);
-			if (rule && !found_normal && !found_recovery && !strstr(work_str, "/* DEFAULT */")) {
+			if (rule && !found_normal && !found_recovery && !strstr(work_str,
+					"/* DEFAULT */")) {
 				printf("removed rule: %s\n", rule);
 				continue;
 			}
 #ifdef DEFEX_INTEGRITY_ENABLE
 			integrity_normal = null_integrity;
 			integrity_recovery = null_integrity;
-			if (found_normal)
-				integrity_normal = file_list[found_normal - 1].integrity;
-			if (found_recovery)
-				integrity_recovery = file_list[found_recovery - 1].integrity;
+			if (found_normal >= 0)
+				integrity_normal = file_list[found_normal].integrity;
+			if (found_recovery >= 0)
+				integrity_recovery = file_list[found_recovery].integrity;
 
 			line_end = strstr(work_str, "},");
 			if (line_end) {
@@ -616,21 +603,22 @@ int reduce_rules(const char *source_rules_file, const char *reduced_rules_file, 
 				line_end += 2;
 			}
 
-			/* Add hash vale after each file path */
-			if (found_normal || (!found_normal && !found_recovery))
-				printf("remained rule: %s, %s %s\n",
-					rule, integrity_normal, (line_end != NULL)?line_end:"");
-			if (found_recovery)
+			/* Add hash value after each file path */
+			if (found_normal >= 0 || (found_normal < 0 && found_recovery < 0))
+				printf("remained rule: %s, %s %s\n", rule,
+					integrity_normal, (line_end != NULL) ? line_end : "");
+			if (found_recovery >= 0)
 				printf("remained rule: %s, %s %s (R)\n",
-					rule, integrity_recovery, (line_end != NULL)?line_end:"");
+					rule, integrity_recovery,
+					(line_end != NULL) ? line_end : "");
 
 			fprintf(dst_file, "%s,\"", work_str);
-			if (found_normal)
+			if (found_normal >= 0)
 				fprintf(dst_file, "N%s", integrity_normal);
-			if (found_recovery)
+			if (found_recovery >= 0)
 				fprintf(dst_file, "R%s", integrity_recovery);
-			
-			fprintf(dst_file, "\"}, %s\n", (line_end != NULL)?line_end:"");
+
+			fprintf(dst_file, "\"}, %s\n", (line_end != NULL) ? line_end : "");
 
 #else
 			printf("remained rule: %s\n", work_str);
@@ -648,10 +636,11 @@ do_close2:
 	return ret_val;
 }
 
-int pack_rules(const char *source_rules_file, const char *packed_rules_file, const char *packed_rules_binfile)
+int pack_rules(const char *source_rules_file, const char *packed_rules_file,
+		const char *packed_rules_binfile)
 {
 	int ret_val = -1;
-	int feature;
+	unsigned int feature;
 	FILE *src_file = NULL, *dst_file = NULL, *dst_binfile = NULL;
 	static char work_str[PATH_MAX*2];
 
@@ -666,9 +655,10 @@ int pack_rules(const char *source_rules_file, const char *packed_rules_file, con
 		goto do_close2;
 	}
 	if (packed_rules_binfile) {
-		dst_binfile = fopen(packed_rules_binfile, "wt");
+		dst_binfile = fopen(packed_rules_binfile, "wb");
 		if (!dst_binfile)
-			printf("Failed to open %s, %s - Ignore\n", packed_rules_binfile, strerror(errno));
+			printf("Failed to open %s, %s - Ignore\n", packed_rules_binfile,
+				strerror(errno));
 	}
 
 	while (!feof(src_file)) {
@@ -678,17 +668,17 @@ int pack_rules(const char *source_rules_file, const char *packed_rules_file, con
 		process_debug_ifdef(work_str);
 		if (!debug_ifdef_is_active) {
 #endif
-		feature = str_to_feature(work_str);
-		if (feature) {
-			addline2tree(work_str, feature);
-			continue;
+			feature = str_to_feature(work_str);
+			if (feature) {
+				addline2tree(work_str, feature);
+				continue;
 		}
 #ifndef DEFEX_DEBUG_ENABLE
 		}
 #endif
 	}
 	store_tree(dst_file, dst_binfile);
-	if (!packfiles_count)
+	if (d_tree_arr_count < 2)
 		printf("WARNING: Defex packed rules tree is empty!\n");
 	ret_val = 0;
 	if (dst_binfile)
@@ -699,143 +689,79 @@ do_close2:
 	return ret_val;
 }
 
-int check_array_size(struct rule_item_struct *ptr)
+int parse_items(struct d_tree_item *base, size_t path_length, int level)
 {
-	unsigned long offset = (unsigned long)ptr - (unsigned long)defex_packed_rules;
-	int min_size = (global_data_size < packfiles_size)?global_data_size:packfiles_size;
-
-	offset += sizeof(struct rule_item_struct);
-
-	if (offset > min_size)
-		return 1;
-
-	offset += ptr->size;
-	if (offset > min_size)
-		return 2;
-	return 0;
-}
-
-int parse_items(struct rule_item_struct *base, int path_length, int level)
-{
-	int l, err, ret = 0, is_rule_part2;
-	unsigned int offset;
-	struct rule_item_struct *child_item;
+	struct d_tree_item tmp_item, *child_item;
+	const char *subdir_ptr;
+	unsigned int subdir_size;
 	static char feature_list[128];
+	int err, ret = 0;
 
 	if (level > 8) {
 		printf("Level is too deep\n");
 		return -1;
-
 	}
 	if (path_length > (sizeof(work_path) - 128)) {
 		printf("Work path is too long\n");
 		return -1;
 	}
-	while (base) {
-		err = check_array_size(base);
-		if (err) {
-			printf("%s/<?> - out of array bounds\n", work_path);
-			return -1;
-		}
-		l = base->size;
-		if (!l) {
-			printf("WARNING: Name field is incorrect, structure error!\n");
-			return -1;
 
-		}
+	child_item = d_tree_lookup_dir_init(base, &tmp_item);
 
-		memcpy(work_path + path_length, base->name, l);
-		l += path_length;
-		work_path[l] = 0;
-		offset = base->next_level;
-		/* check whether the rule has the second part (immutable_dst_exception) */
-		is_rule_part2 = (offset && (base->feature_type & feature_is_file) &&
-				(base->feature_type & feature_immutable_src_exception));
+	while (child_item) {
+		subdir_size = 0;
+		subdir_ptr = d_tree_get_subpath(child_item, &subdir_size);
+		if (subdir_ptr)
+			memcpy(work_path + path_length, subdir_ptr, (size_t)subdir_size);
+		subdir_size += (unsigned int)path_length;
+		work_path[subdir_size] = 0;
 
-		if (offset && !is_rule_part2) {
-			if (base->feature_type & feature_is_file) {
-				printf("%s - is a file, but has children, structure error!\n", work_path);
-				ret = -1;
-			} else if (base->feature_type != 0) {
-				feature_to_str(feature_list, base->feature_type);
-				printf("%s%c - %s\n", work_path,
-					((base->feature_type & feature_is_file)?' ':'/'), feature_list);
-			}
-			child_item = GET_ITEM_PTR(offset, defex_packed_rules);
-			work_path[l++] = '/';
-			work_path[l] = 0;
-			err = check_array_size(child_item);
-			if (!err) {
-				err = parse_items(child_item, l, level + 1);
-				if (err != 0)
-					return err;
-			} else {
-				printf("%s/<?> - out of array bounds\n", work_path);
-				ret = -1;
-			}
-		} else {
-			feature_to_str(feature_list, base->feature_type);
-			printf("%s%c%s - %s\n", work_path,
-				((base->feature_type & feature_is_file)?' ':'/'),
-				(is_rule_part2)?":<SECOND PART>":"", feature_list);
+		if (child_item->features & active_feature_mask) {
+			feature_to_str(feature_list, child_item->features);
+			printf("%s%c - %s\n", work_path,
+			       ((child_item->features & feature_is_file)?' ':'/'),
+			       feature_list);
 		}
+		work_path[subdir_size++] = '/';
+		work_path[subdir_size] = 0;
+		err = parse_items(child_item, (size_t)subdir_size, level + 1);
+		if (err != 0)
+			return err;
+
 		work_path[path_length] = 0;
-		offset = base->next_file;
-		base = (offset)?GET_ITEM_PTR(offset, defex_packed_rules):NULL;
+		child_item = d_tree_next_child(base, child_item);
 	}
 	return ret;
 }
 
-int defex_show_structure(void *packed_rules, int rules_size)
+int defex_show_structure(void *packed_rules, size_t rules_size)
 {
-	struct rule_item_struct *base;
-	int res, offset;
-	int first_item_size = sizeof(struct rule_item_struct) + sizeof(header_name);
-
-	defex_packed_rules = (struct rule_item_struct *)packed_rules;
+	struct d_tree_item base;
+	int res;
 
 	work_path[0] = '/';
 	work_path[1] = 0;
 
-	packfiles_size = rules_size;
-	global_data_size = defex_packed_rules->data_size;
+	if (d_tree_get_header(packed_rules, rules_size, &extern_tree)) {
+		printf("ERROR: Unknown file version!\n");
+		return -1;
+	}
+
+	packfiles_size = (unsigned int)rules_size;
+	global_data_size = extern_tree.data_size;
 
 	printf("Rules binary size: %d\n", packfiles_size);
 	printf("Rules internal data size: %d\n", global_data_size);
 
 	if (global_data_size > packfiles_size)
-		printf("WARNING: Internal size is bigger than binary size, possible structure error!\n");
-
-	if (packfiles_size < first_item_size) {
-		printf("ERROR: Too short binary size, can't continue!\n");
-		return -1;
-	}
-
-	if (global_data_size < first_item_size)
-		printf("WARNING: Too short data size, possible structure error!\n");
-
-	if ((int)(defex_packed_rules->size) != sizeof(header_name))
-		printf("WARNING: incorrect size field (%d), possible structure error!\n",
-			(int)defex_packed_rules->size);
-
-
-	if (memcmp(header_name, defex_packed_rules->name, sizeof(header_name)) != 0)
-		printf("WARNING: incorrect name field, possible structure error!\n");
+		printf("WARNING: Internal size is bigger than binary size, possible"
+			" structure error!\n");
 
 	printf("File List:\n");
-	offset = defex_packed_rules->next_level;
-	base = (offset)?GET_ITEM_PTR(offset, defex_packed_rules):NULL;
-
-	if ((long unsigned int)base < (long unsigned int)packed_rules ||
-			(long unsigned int)base > (long unsigned int)base + rules_size) {
-		printf("- empty list\n");
-		return 0;
-	} else if (check_array_size(base)) {
-		printf("- list is out of array bounds!\n");
+	if (!d_tree_get_item_header(&extern_tree, 0, &base))
 		return -1;
-	}
 
-	res = parse_items(base, 1, 1);
+	res = parse_items(&base, 1, 1);
 	printf("== End of File List ==\n");
 	return res;
 }
@@ -844,7 +770,7 @@ int parse_packed_bin_file(const char *source_bin_file)
 {
 	struct stat sb;
 	FILE *policy_file = NULL;
-	int policy_size;
+	size_t policy_size, readed;
 	unsigned char *policy_data = NULL;
 
 	if (stat(source_bin_file, &sb) == -1) {
@@ -852,11 +778,11 @@ int parse_packed_bin_file(const char *source_bin_file)
 		return -1;
 	}
 
-	policy_size = sb.st_size;
+	policy_size = (size_t)sb.st_size;
 
 	printf("Try to parse file: %s\n", source_bin_file);
 
-	policy_file = fopen(source_bin_file, "r");
+	policy_file = fopen(source_bin_file, "rb");
 	if (policy_file == NULL) {
 		perror("Error");
 		return -1;
@@ -869,8 +795,9 @@ int parse_packed_bin_file(const char *source_bin_file)
 		goto exit;
 	}
 
-	if ((fread(policy_data, policy_size, 1, policy_file)) != 1) {
-		perror("Error");
+	readed = fread(policy_data, 1, policy_size, policy_file);
+	if (readed != policy_size) {
+		printf("Read Error: readed %d bytes", (int)readed);
 		goto exit;
 	}
 
@@ -889,6 +816,7 @@ int main(int argc, char **argv)
 	char *reduced_file = NULL, *list_file = NULL;
 	int i;
 
+	init_tree_data(D_TREE_VERSION_20);
 	if (argc == 3) {
 		if (!strncmp(argv[1], "-s", 2)) {
 			SAFE_STRCOPY(param[0], argv[2]);
@@ -905,16 +833,16 @@ int main(int argc, char **argv)
 
 	for (i = 0; i < (argc - 2); i++) {
 		SAFE_STRCOPY(param[i], argv[i + 2]);
-		switch(i) {
-			case 0:
-				src_file = param[i];
-				break;
-			case 1:
-				packed_file = reduced_file = param[i];
-				break;
-			case 2:
-				packed_bin_file = list_file = param[i];
-				break;
+		switch (i) {
+		case 0:
+			src_file = param[i];
+			break;
+		case 1:
+			packed_file = reduced_file = param[i];
+			break;
+		case 2:
+			packed_bin_file = list_file = param[i];
+			break;
 		}
 	}
 
@@ -933,8 +861,10 @@ int main(int argc, char **argv)
 show_help:
 	printf("Defex rules processing utility.\nUSAGE:\n%s <CMD> <PARAMS>\n"
 		"Commands:\n"
-		"  -p - Pack rules file to the tree. Params: <SOURCE_FILE> <PACKED_FILE> [PACKED_BIN_FILE]\n"
-		"  -r - Reduce rules file (remove unexistent files). Params: <SOURCE_FILE> <REDUCED_FILE> <FILE_LIST>\n"
+		"  -p - Pack rules file to the tree. Params: <SOURCE_FILE> <PACKED_FILE>"
+		" [PACKED_BIN_FILE]\n"
+		"  -r - Reduce rules file (remove unexistent files). Params: <SOURCE_FILE>"
+		" <REDUCED_FILE> <FILE_LIST>\n"
 		"  -s - Show rules binary file content. Params: <PACKED_BIN_FILE>\n",
 		argv[0]);
 	return -1;

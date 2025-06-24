@@ -83,6 +83,43 @@ int tcpm_shutdown(struct tcpc_device *tcpc)
 }
 EXPORT_SYMBOL(tcpm_shutdown);
 
+int tcpm_check_suspend_pending(struct tcpc_device *tcpc)
+{
+	if (atomic_read(&tcpc->suspend_pending) > 0)
+		return -EBUSY;
+
+	if (atomic_read(&tcpc->pending_event) > 0 ||
+	    tcpc_get_timer_tick(tcpc))
+		return -EBUSY;
+
+	return 0;
+}
+EXPORT_SYMBOL(tcpm_check_suspend_pending);
+
+int tcpm_suspend(struct tcpc_device *tcpc)
+{
+	int ret = 0;
+
+	ret = tcpm_check_suspend_pending(tcpc);
+	if (ret)
+		return ret;
+
+	atomic_set(&tcpc->is_suspended, true);
+
+	ret = tcpm_check_suspend_pending(tcpc);
+	if (ret)
+		tcpm_resume(tcpc);
+	return ret;
+}
+EXPORT_SYMBOL(tcpm_suspend);
+
+void tcpm_resume(struct tcpc_device *tcpc)
+{
+	atomic_set(&tcpc->is_suspended, false);
+	wake_up_all(&tcpc->resume_wait_que);
+}
+EXPORT_SYMBOL(tcpm_resume);
+
 int tcpm_inquire_remote_cc(struct tcpc_device *tcpc,
 	uint8_t *cc1, uint8_t *cc2, bool from_ic)
 {

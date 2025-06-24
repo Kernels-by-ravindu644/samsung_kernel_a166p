@@ -2041,6 +2041,7 @@ static int fts_get_fw_file_via_request_firmware(struct fts_upgrade *upg)
     const struct firmware *fw = NULL;
     u8 *tmpbuf = NULL;
     char fwname[FILE_NAME_LENGTH] = { 0 };
+    u8 i = 0;
 
     if (!upg || !upg->ts_data || !upg->ts_data->dev) {
         FTS_ERROR("upg/ts_data/dev is null");
@@ -2050,22 +2051,27 @@ static int fts_get_fw_file_via_request_firmware(struct fts_upgrade *upg)
     snprintf(fwname, FILE_NAME_LENGTH, "%s.bin", \
              FTS_FW_NAME_PREX_WITH_REQUEST);
 
-    ret = request_firmware(&fw, fwname, upg->ts_data->dev);
-    if (0 == ret) {
-        FTS_INFO("firmware(%s) request successfully", fwname);
-        tmpbuf = vmalloc(fw->size);
-        if (NULL == tmpbuf) {
-            FTS_ERROR("fw buffer vmalloc fail");
-            ret = -ENOMEM;
+    do {
+        ret = request_firmware(&fw, fwname, upg->ts_data->dev);
+        if (0 == ret) {
+            FTS_INFO("firmware(%s) request successfully", fwname);
+            tmpbuf = vmalloc(fw->size);
+            if (NULL == tmpbuf) {
+                FTS_ERROR("fw buffer vmalloc fail");
+                ret = -ENOMEM;
+            } else {
+                memcpy(tmpbuf, fw->data, fw->size);
+                upg->fw = tmpbuf;
+                upg->fw_length = fw->size;
+                upg->fw_from_request = 1;
+            }
         } else {
-            memcpy(tmpbuf, fw->data, fw->size);
-            upg->fw = tmpbuf;
-            upg->fw_length = fw->size;
-            upg->fw_from_request = 1;
+            FTS_INFO("firmware(%s) request fail,ret=%d", fwname, ret);
         }
-    } else {
-        FTS_INFO("firmware(%s) request fail,ret=%d", fwname, ret);
-    }
+        i = i + 1;
+        mdelay(1000);
+    } while ((i < 7) && (ret != 0));
+    FTS_INFO("request_i = %d\n", i);
 
     if (fw != NULL) {
         release_firmware(fw);

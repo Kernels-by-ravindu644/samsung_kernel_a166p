@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
  * This code is based on IMA's code
  *
@@ -33,6 +34,7 @@
 #include "five_cache.h"
 #include "five_dmverity.h"
 #include "five_vfs.h"
+#include "five_log.h"
 
 #define FIVE_RSA_SIGNATURE_MAX_LENGTH (2048/8)
 /* Identify extend structure of integrity label */
@@ -80,7 +82,7 @@ static int five_collect_measurement(struct file *file, u8 hash_algo,
 {
 	int result = 0;
 
-	BUG_ON(!file || !hash);
+	FIVE_BUG_ON(!file || !hash);
 
 	result = five_calc_file_hash(file, hash_algo, hash, &hash_len);
 	if (result) {
@@ -161,8 +163,8 @@ static int five_fix_xattr(struct task_struct *task,
 	struct five_cert_body body_cert = {0};
 	struct five_cert_header *header;
 
-	BUG_ON(!task || !dentry || !file || !raw_cert || !(*raw_cert) || !iint);
-	BUG_ON(!raw_cert_len);
+	FIVE_BUG_ON(!task || !dentry || !file || !raw_cert || !(*raw_cert) || !iint);
+	FIVE_BUG_ON(!raw_cert_len);
 
 	rc = five_cert_body_fillout(&body_cert, *raw_cert, *raw_cert_len);
 	if (unlikely(rc))
@@ -219,9 +221,6 @@ static int five_fix_xattr(struct task_struct *task,
 	} else if (panic_on_error) {
 		panic("FIVE failed to sign %s (ret code = %d)",
 		dentry->d_name.name, rc);
-	} else {
-		five_audit_sign_err(current, file, "fix_xattr", 0,
-			0, "can't sign the file", rc);
 	}
 
 	kfree(sig);
@@ -291,7 +290,7 @@ int five_appraise_measurement(struct task_struct *task, int func,
 	size_t file_hash_len = 0;
 	struct five_cert_header *header = NULL;
 
-	BUG_ON(!task || !iint || !file);
+	FIVE_BUG_ON(!task || !iint || !file);
 
 	prev_integrity = task_integrity_read(TASK_INTEGRITY(task));
 	dentry = file->f_path.dentry;
@@ -300,7 +299,7 @@ int five_appraise_measurement(struct task_struct *task, int func,
 	if (bad_fs(inode)) {
 		status = FIVE_FILE_FAIL;
 		cause = CAUSE_BAD_FS;
-		rc = -ENOTSUPP;
+		rc = -EOPNOTSUPP;
 		goto out;
 	}
 
@@ -472,7 +471,7 @@ static int five_update_xattr(struct task_struct *task,
 			.hash_algo = five_hash_algo,
 			.signature_type = FIVE_XATTR_HMAC };
 
-	BUG_ON(!task || !iint || !file || !label);
+	FIVE_BUG_ON(!task || !iint || !file || !label);
 
 	if (label->version == FIVE_LABEL_VERSION1) {
 		hash_len = (size_t)hash_digest_size[five_hash_algo];

@@ -1557,7 +1557,6 @@ static int mtk_atomic_check(struct drm_device *dev,
 	struct drm_crtc_state *crtc_state;
 	struct mtk_crtc_state *old_state, *new_state;
 	int i, ret = 0;
-	int power_mode = DISP_NONE;
 
 	ret = drm_atomic_helper_check(dev, state);
 	if (ret)
@@ -1569,29 +1568,6 @@ static int mtk_atomic_check(struct drm_device *dev,
 
 		if (drm_crtc_index(crtc) == 0)
 			mtk_drm_crtc_mode_check(crtc, crtc->state, crtc_state);
-
-		if (crtc_state->active == 0 &&
-				crtc->state->active == 1) {
-			if (old_state->prop_val[CRTC_PROP_DOZE_ACTIVE])
-				power_mode = DISP_DOZE_SUSPEND;
-			else
-				power_mode = DISP_OFF;
-		} else if (crtc_state->active == 1 &&
-				crtc->state->active == 0) {
-			if (old_state->prop_val[CRTC_PROP_DOZE_ACTIVE] &&
-					!new_state->prop_val[CRTC_PROP_DOZE_ACTIVE])
-				power_mode = DISP_ON;
-			else if (old_state->prop_val[CRTC_PROP_DOZE_ACTIVE])
-				power_mode = DISP_DOZE;
-			else
-				power_mode = DISP_ON;
-		} else if (!old_state->prop_val[CRTC_PROP_DOZE_ACTIVE] &&
-				new_state->prop_val[CRTC_PROP_DOZE_ACTIVE]) {
-			power_mode = DISP_DOZE;
-		}
-
-		if (power_mode != DISP_NONE)
-			mtk_notifier_call_chain(MTK_POWER_MODE_CHANGE, (void *)&power_mode);
 
 		if (old_state->prop_val[CRTC_PROP_DOZE_ACTIVE] ==
 		    new_state->prop_val[CRTC_PROP_DOZE_ACTIVE])
@@ -1898,6 +1874,8 @@ static int mtk_atomic_commit(struct drm_device *drm,
 	if (ret)
 		return ret;
 
+	mtk_check_powermode(state, MTK_POWER_MODE_CHANGE);
+
 	crtc_mask = mtk_atomic_crtc_mask(drm, state);
 
 	for_each_new_crtc_in_state(state, crtc, new_crtc_state, j) {
@@ -1996,7 +1974,7 @@ mutex_unlock:
 	DRM_MMP_EVENT_END(mutex_lock, 0, 0);
 	DDP_MUTEX_UNLOCK(&private->commit.lock, __func__, pf);
 	mtk_crtc0->need_lock_tid = 0;
-	mtk_notifier_call_chain(MTK_POWER_MODE_DONE, NULL);
+	mtk_check_powermode(state, MTK_POWER_MODE_DONE);
 	DDP_PROFILE("[PROFILE] %s-\n", __func__);
 
 #if IS_ENABLED(CONFIG_USDM_PANEL_BIG_LOCK)

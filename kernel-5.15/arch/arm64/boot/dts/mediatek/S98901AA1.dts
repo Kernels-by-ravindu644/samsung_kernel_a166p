@@ -375,7 +375,7 @@
         afc_common_charger_input_curr = <1800000>;
         afc_common_charger_curr = <2500000>;
         afc_ichg_level_threshold = <1000000>;
-        afc_min_charger_voltage = <4200000>;
+        afc_min_charger_voltage = <4600000>;
         afc_max_charger_voltage = <9000000>;
         pinctrl-names = "active", "sleep";
         pinctrl-0 = <&afc_enable_pin>;
@@ -599,7 +599,7 @@
 		// upm6720,vac2-pulldown-en;
 
 		upm6720,sense-resistor-mohm = <5>;	/* unit: 1mohm */
-		upm6720,ss-timeout = <10000>;		/* unit: 1ms */
+		upm6720,ss-timeout = <1500>;		/* unit: 1ms */
 		upm6720,wdt-set = <30000>;			/* unit: 1ms */
 		upm6720,chg-config-1 = <1>;
 		upm6720,fsw-set = <500>;

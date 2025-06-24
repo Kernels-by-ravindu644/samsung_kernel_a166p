@@ -22,10 +22,12 @@
 #define pr_fmt(fmt) KBUILD_MODNAME " %s(%d) :" fmt, __func__, __LINE__
 
 #define DEFAULT_MIN_LIMIT 15
+#define IS_POWER_OFF_CHARGR 8
 
 struct reg_vibr_config {
 	unsigned int min_volt;
 	unsigned int max_volt;
+	unsigned int charge_power_off;
 	struct regulator *reg;
 };
 
@@ -38,6 +40,13 @@ struct reg_vibr {
 	struct led_classdev vibr_cdev;
 	struct reg_vibr_config vibr_conf;
 	struct notifier_block oc_handle;
+};
+
+struct tag_bootmode {
+	u32 size;
+	u32 tag;
+	u32 bootmode;
+	u32 boottype;
 };
 
 static int mt_vibra_init_config(struct device *dev,
@@ -127,10 +136,18 @@ static void update_vibrator(struct work_struct *work)
 {
 	struct reg_vibr *vibr = container_of(work, struct reg_vibr, vibr_work);
 
-	if (!atomic_read(&vibr->vibr_state))
-		vibr_disable(vibr);
-	else
-		vibr_enable(vibr);
+	if(vibr->vibr_conf.charge_power_off){
+		if (!atomic_read(&vibr->vibr_state))
+			vibr_enable(vibr);
+		else
+			vibr_disable(vibr);
+	} else {
+		if (!atomic_read(&vibr->vibr_state))
+			vibr_disable(vibr);
+		else
+			vibr_enable(vibr);
+	}
+
 }
 
 static int regulator_vibrator_set(struct led_classdev *led_cdev, enum led_brightness value)
@@ -169,9 +186,32 @@ static int regulator_oc_event(struct notifier_block *nb,
 	return NOTIFY_OK;
 }
 
+static int vib_get_bootmode(void)
+{
+	struct device_node *np_chosen;
+	struct tag_bootmode *tag = NULL;
+
+	np_chosen = of_find_node_by_path("/chosen");
+	if (!np_chosen)
+		np_chosen = of_find_node_by_path("/chosen@0");
+
+	if (!np_chosen)
+		return -1;
+
+	tag = (struct tag_bootmode *) of_get_property(np_chosen, "atag,boot",
+			NULL);
+
+	if (!tag)
+		return -1;
+
+	pr_info("%s : bootmode: 0x%x\n", __func__, tag->bootmode);
+	return tag->bootmode;
+}
+
 static int vib_probe(struct platform_device *pdev)
 {
 	int ret;
+	int bootmode =0;
 	struct reg_vibr *m_vibr;
 
 	pr_info("probe start +++");
@@ -180,6 +220,13 @@ static int vib_probe(struct platform_device *pdev)
 		ret = -ENOMEM;
 		goto err;
 	}
+
+	bootmode = vib_get_bootmode();
+	if (bootmode == IS_POWER_OFF_CHARGR)
+		m_vibr->vibr_conf.charge_power_off = 1;
+	else
+		m_vibr->vibr_conf.charge_power_off = 0;
+
 	m_vibr->vibr_queue = create_singlethread_workqueue(VIB_DEVICE);
 	if (!m_vibr->vibr_queue) {
 		ret = -ENOMEM;

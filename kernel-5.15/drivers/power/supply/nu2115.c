@@ -666,7 +666,7 @@ static int nu2115_otg_enable(struct regulator_dev *rdev)
 
 	val = NU2115_OTG_ENABLE;
 	val <<= NU2115_EN_OTG_SHIFT;
-	ret = nu2115_update_bits(chip, NU2115_REG_2F, NU2115_EN_OTG_MASK, val);
+	ret = nu2115_write_byte(chip, NU2115_REG_2F, val);
 	if (ret < 0) {
 		dev_err(chip->dev, "Nu2115 write OTG_EN:1 fail: %d\n", ret);
 		return ret;
@@ -705,7 +705,7 @@ static int nu2115_otg_disable(struct regulator_dev *rdev)
 
 	val = NU2115_OTG_DISABLE;
 	val <<= NU2115_EN_OTG_SHIFT;
-	ret = nu2115_update_bits(chip, NU2115_REG_2F, NU2115_EN_OTG_MASK, val);
+	ret = nu2115_write_byte(chip, NU2115_REG_2F, val);
 	if (ret < 0) {
 		dev_err(chip->dev, "NU2115 write OTG_EN:0 fail: %d\n", ret);
 		return ret;
@@ -1052,7 +1052,7 @@ static int nu2115_enable_regulation(struct nu2115 *chip, bool enable)
 	return ret;
 }
 #endif
-/*
+
 static int nu2115_set_ss_timeout(struct nu2115 *chip, int timeout)
 {
 	int ret =0;
@@ -1095,7 +1095,7 @@ static int nu2115_set_ss_timeout(struct nu2115 *chip, int timeout)
 			val);
 
 	return ret;
-}*/
+}
 
 /*there is no set_ibat reg*/
 #if 0
@@ -1545,7 +1545,7 @@ static int nu2115_init_device(struct nu2115 *chip)
 	//nu2115_set_errlo_status_mask(chip);
 //#endif
 
-	//nu2115_set_ss_timeout(chip, 10000);
+	nu2115_set_ss_timeout(chip, 1500);
 	//nu2115_set_sense_resistor(chip, chip->cfg->sense_r_mohm);
 
 	nu2115_init_protection(chip);

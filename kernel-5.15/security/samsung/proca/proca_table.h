@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: GPL-2.0 */
 /*
  * PROCA task descriptors table
  *
@@ -33,9 +34,9 @@ struct proca_table {
 	DECLARE_HASHTABLE(app_name_map, PROCA_TASKS_TABLE_SHIFT);
 };
 
-void proca_table_init(struct proca_table *table);
+int proca_table_init(struct proca_table *table);
 
-void proca_table_add_task_descr(struct proca_table *table,
+int proca_table_add_task_descr(struct proca_table *table,
 				struct proca_task_descr *descr);
 
 struct proca_task_descr *proca_table_get_by_task(

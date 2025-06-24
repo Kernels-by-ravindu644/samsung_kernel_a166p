@@ -797,7 +797,7 @@ struct WIFI_VAR {
 	/* Current Wi-Fi Settings and Flags */
 	uint8_t aucPermanentAddress[MAC_ADDR_LEN];
 	uint8_t aucMacAddress[KAL_AIS_NUM][MAC_ADDR_LEN];
-	uint8_t aucDeviceAddress[MAC_ADDR_LEN];
+	uint8_t aucP2pDevAddr[KAL_P2P_NUM][MAC_ADDR_LEN];
 	uint8_t aucInterfaceAddress[KAL_P2P_NUM][MAC_ADDR_LEN];
 
 	uint8_t ucAvailablePhyTypeSet;

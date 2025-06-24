@@ -2845,12 +2845,12 @@ cc_cv:
 		PE50_INFO("--vbat >= vbat_cv, %d > %d\n", vbat, data->vbat_cv);
 		vta -= auth_data->vta_step;
 		//ita -= ita_gap_per_vstep;
-		ita = desc->ita_level[PE50_RCABLE_NORMAL];
+		ita = min(desc->ita_level[PE50_RCABLE_NORMAL], data->ita_lmt);
 		data->is_vbat_over_cv = true;
 	} else if (data->ita_measure > (idvchg_lmt + 50) || vsys >= PE50_VSYS_UPPER_BOUND) {
 		vta -= auth_data->vta_step;
 		//ita -= ita_gap_per_vstep;
-		ita = desc->ita_level[PE50_RCABLE_NORMAL];
+		ita = min(desc->ita_level[PE50_RCABLE_NORMAL], data->ita_lmt);
 		ita = max(ita, idvchg_lmt);
 		PE50_INFO("--vta, ita(meas,lmt)=(%d,%d)\n", data->ita_measure,
 			  idvchg_lmt);
@@ -2862,7 +2862,7 @@ cc_cv:
 		vta = min(vta, (u32)auth_data->vcap_max);
 		//ita += ita_gap_per_vstep;
 		//ita = min(ita, idvchg_lmt);
-		ita = desc->ita_level[PE50_RCABLE_NORMAL];
+		ita = min(desc->ita_level[PE50_RCABLE_NORMAL], data->ita_lmt);
 		if (ita == data->ita_setting)
 			suspect_ta_cc = true;
 		PE50_INFO("++vta, ita(meas,lmt)=(%d,%d)\n", data->ita_measure,
@@ -3168,8 +3168,8 @@ static bool pe50_check_thermal_level(struct pe50_algo_info *info,
 		//	 tdata->curlmt[PE50_THERMAL_VERY_WARM] > 0)
 		else if (tdata->temp >=
 			 tdata->temp_level_def[PE50_THERMAL_VERY_WARM]) {
-			if (strncmp(tdata->name, "tbat111", 4) == 0) {
-				PE50_INFO("tbat");
+			if (strncmp(tdata->name, "tbat", 4) == 0) {
+				PE50_INFO("tbat111");
 				*tdata->temp_level = PE50_THERMAL_VERY_WARM;
 			} else {
 				if (tdata->curlmt[PE50_THERMAL_VERY_WARM] > 0)
@@ -3822,7 +3822,11 @@ static int pe50_algo_threadfn(void *param)
 			PE50_INFO("is_ita_limit_stop=%d,idvchg_lmt=%d,idvchg_term=%d, wt_charging_state=%d\n",
 				data->is_ita_limit_stop, idvchg_lmt, data->idvchg_term, data->wt_charging_state);
 			if ((data->run_once && ((data->wt_charging_state == WT_RECOVERY_CHARGING)
+#if defined (ONEUI_6P1_CHG_PROTECION_ENABLE)
+				|| ((wt_batt_full_capacity_check_for_cp() == 0) && (data->wt_charging_state == WT_RECOVERY_QUICK_CHARGE))))
+#else
 				|| (data->wt_charging_state == WT_RECOVERY_QUICK_CHARGE)))
+#endif
 				|| ((data->wt_charging_state == WT_START_CHARGING)
 				&& data->is_ita_limit_stop && (idvchg_lmt > data->idvchg_term))) {
 				PE50_INFO("The thermal dropped to a safe range or enable charging. Then recovery charging \n");

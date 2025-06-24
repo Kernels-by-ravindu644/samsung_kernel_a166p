@@ -308,9 +308,11 @@ struct tcpc_device {
 	spinlock_t timer_tick_lock;
 	atomic_t pending_event;
 	atomic_t suspend_pending;
+	atomic_t is_suspended;
 	uint64_t timer_tick;
 	wait_queue_head_t event_wait_que;
 	wait_queue_head_t timer_wait_que;
+	wait_queue_head_t resume_wait_que;
 	struct task_struct *event_task;
 	struct task_struct *timer_task;
 

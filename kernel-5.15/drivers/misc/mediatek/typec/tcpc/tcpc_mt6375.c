@@ -14,6 +14,7 @@
 #include <linux/sched.h>
 #include <dt-bindings/mfd/mt6375.h>
 #include <linux/sched/clock.h>
+#include <linux/suspend.h>
 
 #include "inc/tcpci.h"
 #include "inc/tcpci_typec.h"
@@ -443,30 +444,51 @@ struct tcpc_desc def_tcpc_desc = {
 	.wd_sbu_aud_ubound = CONFIG_WD_SBU_AUD_UBOUND,
 };
 
+static int mt6375_write_helper(struct mt6375_tcpc_data *ddata, u32 reg,
+			       const void *data, size_t count)
+{
+	struct tcpc_device *tcpc = ddata->tcpc;
+	int ret = 0;
+
+	atomic_inc(&tcpc->suspend_pending);
+	wait_event(tcpc->resume_wait_que, !atomic_read(&tcpc->is_suspended) ||
+		   !ddata->dev->parent->power.is_suspended);
+	ret = regmap_bulk_write(ddata->rmap, reg, data, count);
+	atomic_dec_if_positive(&tcpc->suspend_pending);
+	return ret;
+}
+
+static int mt6375_read_helper(struct mt6375_tcpc_data *ddata, u32 reg,
+			      void *data, size_t count)
+{
+	struct tcpc_device *tcpc = ddata->tcpc;
+	int ret = 0;
+
+	atomic_inc(&tcpc->suspend_pending);
+	wait_event(tcpc->resume_wait_que, !atomic_read(&tcpc->is_suspended) ||
+		   !ddata->dev->parent->power.is_suspended);
+	ret = regmap_bulk_read(ddata->rmap, reg, data, count);
+	atomic_dec_if_positive(&tcpc->suspend_pending);
+	return ret;
+}
+
 static inline int mt6375_write8(struct mt6375_tcpc_data *ddata, u32 reg,
 				u8 data)
 {
-	return regmap_write(ddata->rmap, reg, data);
+	return mt6375_write_helper(ddata, reg, &data, 1);
 }
 
 static inline int mt6375_read8(struct mt6375_tcpc_data *ddata, u32 reg,
 			       u8 *data)
 {
-	int ret;
-	u32 _data = 0;
-
-	ret = regmap_read(ddata->rmap, reg, &_data);
-	if (ret < 0)
-		return ret;
-	*data = _data;
-	return 0;
+	return mt6375_read_helper(ddata, reg, data, 1);
 }
 
 static inline int mt6375_write16(struct mt6375_tcpc_data *ddata, u32 reg,
 				 u16 data)
 {
 	data = cpu_to_le16(data);
-	return regmap_bulk_write(ddata->rmap, reg, &data, 2);
+	return mt6375_write_helper(ddata, reg, &data, 2);
 }
 
 static inline int mt6375_read16(struct mt6375_tcpc_data *ddata, u32 reg,
@@ -474,7 +496,7 @@ static inline int mt6375_read16(struct mt6375_tcpc_data *ddata, u32 reg,
 {
 	int ret;
 
-	ret = regmap_bulk_read(ddata->rmap, reg, data, 2);
+	ret = mt6375_read_helper(ddata, reg, data, 2);
 	if (ret < 0)
 		return ret;
 	*data = le16_to_cpu(*data);
@@ -484,20 +506,30 @@ static inline int mt6375_read16(struct mt6375_tcpc_data *ddata, u32 reg,
 static inline int mt6375_bulk_write(struct mt6375_tcpc_data *ddata, u32 reg,
 				    const void *data, size_t count)
 {
-	return regmap_bulk_write(ddata->rmap, reg, data, count);
+	return mt6375_write_helper(ddata, reg, data, count);
 }
 
 
 static inline int mt6375_bulk_read(struct mt6375_tcpc_data *ddata, u32 reg,
 				   void *data, size_t count)
 {
-	return regmap_bulk_read(ddata->rmap, reg, data, count);
+	return mt6375_read_helper(ddata, reg, data, count);
 }
 
 static inline int mt6375_update_bits(struct mt6375_tcpc_data *ddata, u32 reg,
 				     u8 mask, u8 data)
 {
-	return regmap_update_bits(ddata->rmap, reg, mask, data);
+	u8 orig_data = 0;
+	int ret = 0;
+
+	ret = mt6375_read_helper(ddata, reg, &orig_data, 1);
+	if (ret < 0)
+		return ret;
+
+	orig_data &= ~mask;
+	orig_data |= data & mask;
+
+	return mt6375_write_helper(ddata, reg, &orig_data, 1);
 }
 
 static inline int mt6375_set_bits(struct mt6375_tcpc_data *ddata, u32 reg,
@@ -515,20 +547,21 @@ static inline int mt6375_clr_bits(struct mt6375_tcpc_data *ddata, u32 reg,
 static inline int mt6375_write8_rt2(struct mt6375_tcpc_data *ddata, u32 reg,
 				    u8 data)
 {
-	return regmap_write(ddata->rmap, reg + MT6375_REG_RT2BASEADDR, data);
+	return mt6375_write_helper(ddata, reg + MT6375_REG_RT2BASEADDR,
+				   &data, 1);
 }
 
 static inline int mt6375_bulk_write_rt2(struct mt6375_tcpc_data *ddata, u32 reg,
 					const void *data, size_t count)
 {
-	return regmap_bulk_write(ddata->rmap, reg + MT6375_REG_RT2BASEADDR,
-				 data, count);
+	return mt6375_write_helper(ddata, reg + MT6375_REG_RT2BASEADDR,
+				   data, count);
 }
 
 static inline int mt6375_update_bits_rt2(struct mt6375_tcpc_data *ddata,
 					 u32 reg, u8 mask, u8 data)
 {
-	return regmap_update_bits(ddata->rmap, reg + MT6375_REG_RT2BASEADDR,
+	return mt6375_update_bits(ddata, reg + MT6375_REG_RT2BASEADDR,
 				  mask, data);
 }
 
@@ -680,7 +713,7 @@ static int mt6375_enable_vbus_short_cc(struct tcpc_device *tcpc, bool cc1, bool 
 	val = (cc1 ? MT6375_MSK_CMPEN_VBUS_TO_CC1 : 0) |
 		(cc2 ? MT6375_MSK_CMPEN_VBUS_TO_CC2 : 0);
 
-	ret = regmap_update_bits(ddata->rmap, MT6375_REG_FRS_CTRL2,
+	ret = mt6375_update_bits(ddata, MT6375_REG_FRS_CTRL2,
 				 MT6375_MSK_CMPEN_VBUS_TO_CC, val);
 	if (ret < 0)
 		return ret;
@@ -709,6 +742,8 @@ static void mt6375_cc_short_dwork_handler(struct work_struct *work)
 	bool local_vsc_status;
 	int ret;
 	u8 data;
+
+	pm_system_wakeup();
 
 	ret = mt6375_read8(ddata, MT6375_REG_MTST3, &data);
 	if (ret < 0) {
@@ -778,6 +813,8 @@ static void mt6375_fod_polling_dwork_handler(struct work_struct *work)
 						      struct mt6375_tcpc_data,
 						      fod_polling_dwork);
 
+	pm_system_wakeup();
+
 	MT6375_DBGINFO("Set FOD_FW_EN\n");
 	tcpci_lock_typec(ddata->tcpc);
 	mt6375_set_bits(ddata, MT6375_REG_FODCTRL, MT6375_MSK_FOD_FW_EN);
@@ -797,7 +834,7 @@ static int mt6375_fod_evt_process(struct mt6375_tcpc_data *ddata)
 	if (ret < 0)
 		return ret;
 	if (fod == TCPC_FOD_LR)
-		mod_delayed_work(system_freezable_wq, &ddata->fod_polling_dwork,
+		mod_delayed_work(system_wq, &ddata->fod_polling_dwork,
 				 msecs_to_jiffies(5000));
 	return tcpc_typec_handle_fod(tcpc, fod);
 }
@@ -1225,14 +1262,16 @@ static void mt6375_wd_polling_dwork_handler(struct work_struct *work)
 	size_t array_size = (tcpc_flags & TCPC_FLAGS_WD_DUAL_PORT) ?  2 : 1;
 	int ret = 0;
 
+	pm_system_wakeup();
+
 	for (i = 0; i < array_size; i++) {
 		tcpci_lock_typec(tcpcs[i]);
 		ret = tcpci_is_plugged_in(tcpcs[i]);
 		tcpci_unlock_typec(tcpcs[i]);
 		if (ret) {
 			if (i != 0)
-				queue_delayed_work(system_freezable_wq, dwork,
-						   msecs_to_jiffies(10000));
+				schedule_delayed_work(dwork,
+						      msecs_to_jiffies(10000));
 			return;
 		}
 	}
@@ -1262,9 +1301,8 @@ static int mt6375_wd_polling_evt_process(struct mt6375_tcpc_data *ddata)
 		tcpci_unlock_typec(tcpcs[i]);
 		if (ret) {
 			if (i != 0)
-				queue_delayed_work(system_freezable_wq,
-						   &ddata->wd_polling_dwork,
-						   msecs_to_jiffies(10000));
+				schedule_delayed_work(&ddata->wd_polling_dwork,
+						      msecs_to_jiffies(10000));
 			tcpci_lock_typec(ddata->tcpc);
 			return 0;
 		}
@@ -1326,7 +1364,7 @@ out:
 static int mt6375_vbus_to_cc1_irq_handler(struct mt6375_tcpc_data *ddata)
 {
 	ddata->short_cc = 0;
-	mod_delayed_work(system_freezable_wq, &ddata->cc_short_dwork,
+	mod_delayed_work(system_wq, &ddata->cc_short_dwork,
 			 msecs_to_jiffies(CC_SHORT_DEBOUNCE));
 	return 0;
 }
@@ -1334,7 +1372,7 @@ static int mt6375_vbus_to_cc1_irq_handler(struct mt6375_tcpc_data *ddata)
 static int mt6375_vbus_to_cc2_irq_handler(struct mt6375_tcpc_data *ddata)
 {
 	ddata->short_cc = 1;
-	mod_delayed_work(system_freezable_wq, &ddata->cc_short_dwork,
+	mod_delayed_work(system_wq, &ddata->cc_short_dwork,
 			 msecs_to_jiffies(CC_SHORT_DEBOUNCE));
 	return 0;
 }
@@ -2006,6 +2044,8 @@ static void mt6375_wd12_strise_irq_dwork_handler(struct work_struct *work)
 						      struct mt6375_tcpc_data,
 						      wd12_strise_irq_dwork);
 
+	pm_system_wakeup();
+
 	MT6375_DBGINFO("++\n");
 	tcpci_lock_typec(ddata->tcpc);
 	mt6375_wd_polling_evt_process(ddata);
@@ -2019,8 +2059,8 @@ static int mt6375_wd12_strise_irq_handler(struct mt6375_tcpc_data *ddata)
 	/* Pull or discharge status from 0 to 1 in normal polling mode */
 	/* mask */
 	mt6375_clr_bits(ddata, MT6375_REG_MTMASK7, MT6375_MSK_WD12_STRISE);
-	queue_delayed_work(system_freezable_wq, &ddata->wd12_strise_irq_dwork,
-			   msecs_to_jiffies(900));
+	schedule_delayed_work(&ddata->wd12_strise_irq_dwork,
+			      msecs_to_jiffies(900));
 	return 0;
 }
 
@@ -2500,12 +2540,6 @@ static int mt6375_tcpc_probe(struct platform_device *pdev)
 		return -ENODEV;
 	}
 
-	ret = mt6375_check_revision(ddata);
-	if (ret < 0) {
-		dev_err(ddata->dev, "failed to check revision(%d)\n", ret);
-		return ret;
-	}
-
 	ddata->desc = devm_kzalloc(ddata->dev, sizeof(*ddata->desc),
 				   GFP_KERNEL);
 	if (!ddata->desc)
@@ -2537,6 +2571,12 @@ static int mt6375_tcpc_probe(struct platform_device *pdev)
 	if (ret < 0) {
 		dev_err(ddata->dev, "failed to register tcpcdev(%d)\n", ret);
 		return ret;
+	}
+
+	ret = mt6375_check_revision(ddata);
+	if (ret < 0) {
+		dev_notice(ddata->dev, "failed to check revision(%d)\n", ret);
+		goto err;
 	}
 
 	ret = mt6375_sw_reset(ddata);
@@ -2612,27 +2652,39 @@ static void mt6375_shutdown(struct platform_device *pdev)
 	tcpm_shutdown(ddata->tcpc);
 }
 
-static int tcpc_mt6375_prepare(struct device *dev)
+static int __maybe_unused mt6375_tcpc_suspend(struct device *dev)
 {
 	struct mt6375_tcpc_data *ddata = dev_get_drvdata(dev);
-	struct tcpc_device *tcpc = ddata->tcpc;
 
-	dev_info(dev, "%s: suspend_pending: %d, pending_event: %d\n", __func__,
-		 atomic_read(&tcpc->suspend_pending),
-		 atomic_read(&tcpc->pending_event));
-	if (atomic_read(&tcpc->suspend_pending) > 0 ||
-	    atomic_read(&tcpc->pending_event) > 0)
-		return -EBUSY;
+	return tcpm_suspend(ddata->tcpc);
+}
+
+static int __maybe_unused mt6375_tcpc_suspend_late(struct device *dev)
+{
+	struct mt6375_tcpc_data *ddata = dev_get_drvdata(dev);
+
+	return tcpm_check_suspend_pending(ddata->tcpc);
+}
+
+static int __maybe_unused mt6375_tcpc_resume(struct device *dev)
+{
+	struct mt6375_tcpc_data *ddata = dev_get_drvdata(dev);
+
+	tcpm_resume(ddata->tcpc);
+
 	return 0;
 }
 
-static const struct dev_pm_ops tcpc_mt6375_pm_ops = {
-	.prepare = tcpc_mt6375_prepare,
+static const struct dev_pm_ops mt6375_tcpc_pm_ops = {
+	SET_SYSTEM_SLEEP_PM_OPS(mt6375_tcpc_suspend, mt6375_tcpc_resume)
+#if IS_ENABLED(CONFIG_PM_SLEEP)
+	.suspend_late = mt6375_tcpc_suspend_late,
+#endif	/* CONFIG_PM_SLEEP */
 };
 
-static const struct of_device_id __maybe_unused mt6375_tcpc_of_match[] = {
-	{ .compatible = "mediatek,mt6375-tcpc", },
-	{ }
+static const struct of_device_id mt6375_tcpc_of_match[] = {
+	{.compatible = "mediatek,mt6375-tcpc",},
+	{}
 };
 MODULE_DEVICE_TABLE(of, mt6375_tcpc_of_match);
 
@@ -2641,8 +2693,8 @@ static struct platform_driver mt6375_tcpc_driver = {
 	.shutdown = mt6375_shutdown,
 	.driver = {
 		.name = "mt6375-tcpc",
-		.pm = &tcpc_mt6375_pm_ops,
 		.of_match_table = of_match_ptr(mt6375_tcpc_of_match),
+		.pm = &mt6375_tcpc_pm_ops,
 	},
 };
 module_platform_driver(mt6375_tcpc_driver);

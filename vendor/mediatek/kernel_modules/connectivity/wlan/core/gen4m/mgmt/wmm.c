@@ -1083,18 +1083,14 @@ u_int8_t wmmParseQosAction(struct ADAPTER *prAdapter,
 
 		/* underflow check */
 		if (prSwRfb->u2PacketLen <
-			(prSwRfb->u2HeaderLen
-			+ (uint16_t)(OFFSET_OF(struct ACTION_ADDTS_RSP_FRAME,
-					     aucInfoElem))
-			+ WLAN_MAC_HEADER_LEN))
+			(uint16_t)(OFFSET_OF(struct ACTION_ADDTS_RSP_FRAME,
+					     aucInfoElem)))
 			break;
 
 		/*for each IE*/
-		u2IEsBufLen =
-			prSwRfb->u2PacketLen - prSwRfb->u2HeaderLen -
+		u2IEsBufLen = prSwRfb->u2PacketLen -
 			(uint16_t)(OFFSET_OF(struct ACTION_ADDTS_RSP_FRAME,
-					     aucInfoElem) -
-				   WLAN_MAC_HEADER_LEN);
+					     aucInfoElem));
 
 		IE_FOR_EACH(pucIE, u2IEsBufLen, u2Offset)
 		{

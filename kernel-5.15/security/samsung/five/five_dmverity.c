@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
  * FIVE dmverity functions
  *
@@ -21,6 +22,7 @@
 #include "five.h"
 #include "five_testing.h"
 #include "five_porting.h"
+
 #include "drivers/md/dm.h"
 
 #ifdef CONFIG_FIVE_DEBUG

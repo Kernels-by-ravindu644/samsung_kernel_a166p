@@ -1,3 +1,20 @@
+// SPDX-License-Identifier: GPL-2.0
+/*
+ * PROCA keyring
+ *
+ * Copyright (C) 2023 Samsung Electronics, Inc.
+ * Oleksandr Stanislavskyi, <o.stanislavs@samsung.com>
+ *
+ * This software is licensed under the terms of the GNU General Public
+ * License version 2, as published by the Free Software Foundation, and
+ * may be copied, distributed, and modified under those terms.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ */
+
 #include <linux/key-type.h>
 #include <crypto/public_key.h>
 #include <crypto/hash_info.h>
@@ -78,11 +95,15 @@ static struct key *proca_request_asymmetric_key(uint32_t keyid)
 
 		kref = keyring_search(make_key_ref(proca_keyring, 1),
 			&key_type_asymmetric, name, true);
-		if (IS_ERR(kref))
+		if (IS_ERR(kref)) {
+
 			key = ERR_CAST(kref);
+			PROCA_ERROR_LOG("keyring search error, %lx", PTR_ERR(key));
+		}
 		else
 			key = key_ref_to_ptr(kref);
 	} else {
+		PROCA_ERROR_LOG("error: no keyring\n");
 		return ERR_PTR(-ENOKEY);
 	}
 
@@ -104,13 +125,18 @@ static struct key *proca_request_asymmetric_key(uint32_t keyid)
 }
 
 static int proca_asymmetric_verify(const char *signature, int sig_len,
-							const char *hash, int hash_len, uint32_t key_id)
+				   const char *hash, int hash_len, uint32_t key_id)
 {
 	struct public_key_signature pks;
 	struct key *key;
 	int ret = -ENOMEM;
 
 	key = proca_request_asymmetric_key(__be32_to_cpu(key_id));
+	if (IS_ERR(key)) {
+		ret = PTR_ERR(key);
+		PROCA_ERROR_LOG("Failed to retrieve key: %d\n", ret);
+		return ret;
+	}
 
 	memset(&pks, 0, sizeof(pks));
 

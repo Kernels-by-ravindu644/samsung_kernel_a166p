@@ -484,7 +484,7 @@ static void get_fw_ver_bin(void *device_data)
 	char buff[16] = { 0 };
 	sec_cmd_set_default_result(sec);
 	fts_read_reg(FTS_REG_FW_VER, &fwver);
-	snprintf(buff, sizeof(buff), "FT8203,%02x", fwver);
+	snprintf(buff, sizeof(buff), "FT3419U,%02x", fwver);
 
 	sec_cmd_set_cmd_result(sec, buff, strnlen(buff, sizeof(buff)));
 	sec->cmd_state = SEC_CMD_STATUS_OK;
@@ -497,7 +497,7 @@ static void get_fw_ver_ic(void *device_data)
 	char buff[16] = { 0 };
 	sec_cmd_set_default_result(sec);
 	fts_read_reg(FTS_REG_FW_VER, &fwver);
-	snprintf(buff, sizeof(buff), "FT8203,%02x", fwver);
+	snprintf(buff, sizeof(buff), "FT3419U,%02x", fwver);
 
 	sec_cmd_set_cmd_result(sec, buff, strnlen(buff, sizeof(buff)));
 	sec->cmd_state = SEC_CMD_STATUS_OK;

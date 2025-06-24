@@ -379,6 +379,14 @@
 #define SGM41513D_REG_0F                0x0F
 #define REG0F_VREG_FT_MASK              0xC0
 #define REG0F_VREG_FT_SHIFT             6
+
+#define REG0F_VINDPM_OS_MASK        0x03
+#define REG0F_VINDPM_OS_SHIFT       0
+#define REG0F_VINDPM_OS_3P9V        0
+#define REG0F_VINDPM_OS_5P9V        1
+#define REG0F_VINDPM_OS_7P5V        2
+#define REG0F_VINDPM_OS_10P5V       3
+
 /* -S98901AA1 liangjianfeng wt, modify, 20240819, modify for add sgm41513 adapter */
 /* Register 0x10 */
 #define UPM6922P_REG_10                 0x10

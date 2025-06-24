@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
  * DB with PROCA certificates
  *
@@ -13,6 +14,7 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
  */
+
 #include <linux/slab.h>
 #include <linux/string.h>
 #include <linux/err.h>
@@ -122,7 +124,7 @@ int proca_certificate_db_get_signed_data(void *context, size_t hdrlen,
 {
 	struct certificate_db *certificate = context;
 	struct certificates_db *db = container_of(certificate,
-									struct certificates_db, proca_certificates_db);
+						  struct certificates_db, proca_certificates_db);
 	struct signed_db *signed_db = &db->proca_signed_db;
 	int rc = 0;
 	uint8_t request_hash[PROCA_DB_MAX_DIGEST_SIZE];
@@ -153,7 +155,7 @@ int proca_certificate_db_get_signed_data(void *context, size_t hdrlen,
 	}
 
 	rc = proca_calc_data_shash((const u8 *)request_hash, request_hash_size,
-								signed_db->db_hash, &signed_db->db_hash_size);
+				   signed_db->db_hash, &signed_db->db_hash_size);
 	if (unlikely(rc)) {
 		PROCA_INFO_LOG("Failed to calculate db hash\n");
 		return rc;
@@ -168,7 +170,7 @@ int proca_certificate_db_get_signature(void *context, size_t hdrlen,
 {
 	struct certificate_db *certificate = context;
 	struct certificates_db *db = container_of(certificate,
-									struct certificates_db, proca_certificates_db);
+						  struct certificates_db, proca_certificates_db);
 	struct signed_db *signed_db = &db->proca_signed_db;
 
 	if (is_test_db(db)) /* there is no signature in test db */
@@ -193,7 +195,7 @@ int proca_certificate_db_get_key_id(void *context, size_t hdrlen,
 	char buff[12] = {0};
 	struct certificate_db *certificate = context;
 	struct certificates_db *db = container_of(certificate,
-									struct certificates_db, proca_certificates_db);
+						  struct certificates_db, proca_certificates_db);
 
 	if (!db || !value || !vlen)
 		return -EINVAL;
@@ -223,22 +225,25 @@ int parse_proca_db(const char *certificate_buff,
 void deinit_proca_db(struct certificates_db *db)
 {
 	struct list_head *l;
+	struct list_head *next;
 	struct certificate_entry *entry;
 	struct certificate_db *cert_db = &db->proca_certificates_db;
 
 	mutex_lock(&db->lock);
-	list_for_each(l, &cert_db->entries) {
+	list_for_each_safe(l, next, &cert_db->entries) {
 		entry = list_entry(l, struct certificate_entry, list);
+		list_del(l);
 		kfree(entry->file_name);
 		kfree(entry->certificate);
+		kfree(entry);
 	}
 
-	if (db->proca_signed_db.db_hash)
-		kfree(db->proca_signed_db.db_hash);
-	if (db->proca_signed_db.signature)
-		kfree(db->proca_signed_db.signature);
-	mutex_unlock(&db->lock);
+	kfree(db->proca_signed_db.db_hash);
+	kfree(db->proca_signed_db.signature);
+	db->proca_signed_db.db_hash = NULL;
+	db->proca_signed_db.signature = NULL;
 	atomic_set(&db->status, NOT_READY);
+	mutex_unlock(&db->lock);
 }
 
 struct certificate_entry *proca_certificate_db_find_entry(
@@ -420,7 +425,7 @@ int load_db(const char *file_path,
 		goto do_clean;
 	}
 
-	PROCA_INFO_LOG("Read %d bytes.\n", db_size);
+	PROCA_INFO_LOG("Read %d bytes in %s.\n", db_size, file_path);
 
 	mutex_lock(&proca_db->lock);
 
@@ -526,7 +531,7 @@ static int proca_verify_digsig(struct certificates_db *db)
 	struct signed_db *sig_db = &db->proca_signed_db;
 
 	rc = proca_digsig_verify(sig_db->signature, sig_db->signature_size,
-								sig_db->db_hash, sig_db->db_hash_size, db->key_id);
+				 sig_db->db_hash, sig_db->db_hash_size, db->key_id);
 
 	return rc;
 }

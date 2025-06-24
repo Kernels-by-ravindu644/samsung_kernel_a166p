@@ -1412,11 +1412,16 @@ u_int8_t glRegisterP2P(struct GLUE_INFO *prGlueInfo, const char *prDevName,
 			goto err_alloc_netdev;
 		}
 
-		COPY_MAC_ADDR(rMacAddr,
-				prAdapter->rWifiVar.aucInterfaceAddress[i]);
+		if (fgSkipRole == SKIP_ROLE_ALL ||
+		    (fgSkipRole == SKIP_ROLE_EXCEPT_MAIN && i != 0))
+			COPY_MAC_ADDR(rMacAddr, prAdapter->rWifiVar
+				.aucP2pDevAddr[i]);
+		else
+			COPY_MAC_ADDR(rMacAddr, prAdapter->rWifiVar
+				.aucInterfaceAddress[i]);
 
 		DBGLOG(INIT, INFO,
-			"Set p2p role[%d] mac to " MACSTR " fgIsApMode(%d)\n",
+			"Set p2p[%d] mac to " MACSTR " fgIsApMode(%d)\n",
 			i, MAC2STR(rMacAddr), fgIsApMode);
 
 		kalMemCopy(prP2pDev->dev_addr, rMacAddr, ETH_ALEN);
@@ -2351,7 +2356,7 @@ skip_role:
 
 	if ((prP2pInfo->prDevHandler == prDev)
 		&& mtk_IsP2PNetDevice(prGlueInfo, prDev)) {
-		COPY_MAC_ADDR(prAdapter->rWifiVar.aucDeviceAddress,
+		COPY_MAC_ADDR(prAdapter->rWifiVar.aucP2pDevAddr[0],
 			sa->sa_data);
 		COPY_MAC_ADDR(prDevBssInfo->aucOwnMacAddr, sa->sa_data);
 		COPY_MAC_ADDR(prDevBssInfo->aucBSSID, sa->sa_data);
