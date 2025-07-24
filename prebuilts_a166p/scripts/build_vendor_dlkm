@@ -1,0 +1,72 @@
+#!/bin/bash
+
+OUTPUT_PATH="out/target/product/a16xm/obj/KERNEL_OBJ"
+MODULES_BASE="${WDIR}/${OUTPUT_PATH}/staging/lib/modules"
+KERNEL_VERSION=$(ls "${MODULES_BASE}/")
+CUSTOM_MODULE_DIR="${MODULES_BASE}/${KERNEL_VERSION}"
+EXTRACTED_DIR="${WDIR}/prebuilts_a166p/vendor_dlkm/extracted_vendor_dlkm"
+MODULES_DIR="${EXTRACTED_DIR}/lib/modules/${KERNEL_VERSION}"
+
+STOCK_MODULES_DEP="${WDIR}/prebuilts_a166p/vendor_dlkm/vendor_dlkm.modules.dep"
+STOCK_MODULES_LOAD="${WDIR}/prebuilts_a166p/vendor_dlkm/vendor_dlkm.modules.load"
+SYSTEM_MAP_FILE="${WDIR}/${OUTPUT_PATH}/kernel-5.15/System.map"
+STRIP_TOOL="${WDIR}/kernel/prebuilts/clang/host/linux-x86/clang-r450784e/bin/llvm-strip"
+
+# Packing the LKMs
+pack(){
+    echo -e "\n[INFO]: Packing Loadable Kernel Modules (LKMs)...\n"
+    "${WDIR}/prebuilts_a166p/scripts/lkm_installer" \
+        "$STOCK_MODULES_DEP" \
+        "$STOCK_MODULES_LOAD" \
+        "$CUSTOM_MODULE_DIR" \
+        "$SYSTEM_MAP_FILE" \
+        "$STRIP_TOOL" \
+        "$EXTRACTED_DIR"
+}
+
+# Append module dependencies if not present
+append_dep() {
+    local dep_file="$1"
+    local module="$2"
+    local deps="$3"
+    if ! grep -q "${module}:" "$dep_file"; then
+        echo "${module}: ${deps}" >> "$dep_file"
+    fi
+}
+
+# Push prebuilt modules
+prebuilts(){
+    echo -e "\n[INFO]: Pushing prebuilt modules to vendor_dlkm...\n"
+    cp -ar "${WDIR}/prebuilts_a166p/vendor_dlkm/prebuilt_modules/"* "$MODULES_DIR/"
+
+    local dep_file="${MODULES_DIR}/modules.dep"
+    append_dep "$dep_file" "bt_drv_connac1x.ko" "wmt_drv.ko btif_drv.ko connadp.ko ccci_md_all.ko ccci_auxadc.ko ccci_util_lib.ko ccmni.ko rps_perf.ko mtk_pbm.ko mtk_mdpm.ko mtk_dynamic_loading_throttling.ko mtk_low_battery_throttling.ko"
+    append_dep "$dep_file" "wlan_drv_gen4m_6835.ko" "mddp.ko wmt_chrdev_wifi.ko wmt_drv.ko btif_drv.ko connadp.ko ccci_md_all.ko ccci_auxadc.ko ccci_util_lib.ko ccmni.ko rps_perf.ko mtk_pbm.ko mtk_mdpm.ko mtk_dynamic_loading_throttling.ko mtk_low_battery_throttling.ko"
+}
+
+flatten(){
+    cd "$MODULES_DIR"
+    mv * ../
+    cd "${WDIR}" && rm -rf "$MODULES_DIR"
+    echo -e "\n[INFO]: Flattened module directory structure.\n"
+}
+
+build(){
+    echo -e "\n[INFO]: Building vendor_dlkm.img...\n"
+    cd "${WDIR}/prebuilts_a166p/vendor_dlkm/"
+    
+    sudo "${WDIR}/prebuilts_a166p/scripts/repack-erofs-script" \
+        extracted_vendor_dlkm/ \
+        erofs
+
+    mv vendor_dlkm_repacked.img "${WDIR}/dist/vendor_dlkm.img"
+    cd "${WDIR}"
+}
+
+# Main execution
+pack || exit 1
+prebuilts || exit 1
+flatten || exit 1
+build || exit 1
+
+echo -e "\n[INFO]: Vendor DLKM build completed successfully!\nOutput image: ${WDIR}/dist/vendor_dlkm.img\n"

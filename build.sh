@@ -17,7 +17,7 @@ if [ ! -f ".requirements" ]; then
     echo -e "\n[INFO]: INSTALLING REQUIREMENTS..!\n"
     {
         sudo apt update
-        sudo apt install -y rsync
+        sudo apt install -y rsync kmod
     } && touch .requirements
 fi
 
@@ -111,3 +111,4 @@ build_tar(){
 
 build_kernel || exit 1
 build_tar
+build_vendor_dlkm
