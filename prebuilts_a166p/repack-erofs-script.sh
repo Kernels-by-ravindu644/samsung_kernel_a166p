@@ -1,6 +1,6 @@
 #!/bin/bash
 # EROFS Image Repacker Script with Enhanced Attribute Restoration
-# Usage: ./repack_erofs.sh <extracted_folder_path>
+# Usage: ./repack_erofs.sh <extracted_folder_path> <fs_type> [compression_level]
 
 set -e
 
@@ -38,13 +38,31 @@ if ! command -v mkfs.erofs &> /dev/null; then
 fi
 
 # Check if extracted folder is provided
-if [ $# -ne 1 ]; then
-  echo -e "${YELLOW}Usage: $0 <extracted_folder_path>${RESET}"
-  echo -e "Example: $0 extracted_vendor"
-  exit 1
+if [ $# -lt 2 ] || [ $# -gt 3 ]; then
+    echo -e "${YELLOW}Usage: $0 <extracted_folder_path> <fs_type> [compression_level]${RESET}"
+    echo -e "fs_type: erofs or ext4"
+    echo -e "compression_level (optional for erofs):"
+    echo -e "  none: no compression"
+    echo -e "  lz4: basic lz4"
+    echo -e "  lz4hc[=0-12]: lz4hc with optional level (default 9)"
+    echo -e "  deflate[=0-9]: deflate with optional level (default 1)"
+    echo -e "\nExample: $0 extracted_vendor erofs lz4hc=9"
+    exit 1
 fi
 
 EXTRACT_DIR="$1"
+FS_TYPE="${2,,}" # Convert to lowercase
+COMP_LEVEL="$3"
+
+# Validate filesystem type
+case "$FS_TYPE" in
+    "erofs"|"ext4") ;;
+    *)
+        echo -e "${RED}Invalid filesystem type. Use 'erofs' or 'ext4'${RESET}"
+        exit 1
+        ;;
+esac
+
 REPACK_INFO="${EXTRACT_DIR}/.repack_info"
 PARTITION_NAME=$(basename "$EXTRACT_DIR" | sed 's/^extracted_//')
 OUTPUT_IMG="${PARTITION_NAME}_repacked.img"
@@ -335,71 +353,50 @@ echo -e "\n${BLUE}${BOLD}Starting repacking process...${RESET}"
 echo -e "${BLUE}┌─ Source directory: ${BOLD}$EXTRACT_DIR${RESET}"
 echo -e "${BLUE}└─ Target image: ${BOLD}$OUTPUT_IMG${RESET}\n"
 
-# Add filesystem selection before any operations
-echo -e "\n${BLUE}${BOLD}Select filesystem type:${RESET}"
-echo -e "1. EROFS"
-echo -e "2. EXT4"
-read -p "Enter your choice [1-2]: " FS_CHOICE
-
-case $FS_CHOICE in
-    1)
-        # EROFS flow - prepare working directory first
+# Replace filesystem selection with automated processing
+case "$FS_TYPE" in
+    "erofs")
+        # Prepare working directory first
         prepare_working_directory
         
-        echo -e "\n${BLUE}${BOLD}Select compression method:${RESET}"
-        echo -e "1. none (default)"
-        echo -e "2. lz4"
-        echo -e "3. lz4hc (level 0-12, default 9)"
-        echo -e "4. deflate (level 0-9, default 1)"
-        read -p "Enter your choice [1-4]: " COMP_CHOICE
-
-        case $COMP_CHOICE in
-          2)
-            COMPRESSION="-zlz4"
-            ;;
-          3)
-            echo -e "\n${BLUE}${BOLD}Select LZ4HC compression level (0-12):${RESET}"
-            echo -e "Default: 9 (higher = better compression but slower)"
-            read -p "Enter compression level: " COMP_LEVEL
-            
-            if [[ "$COMP_LEVEL" =~ ^([0-9]|1[0-2])$ ]]; then
-              COMPRESSION="-zlz4hc,level=$COMP_LEVEL"
-            else
-              echo -e "${YELLOW}Invalid level. Using default level 9.${RESET}"
-              COMPRESSION="-zlz4hc"
-            fi
-            ;;
-          4)
-            echo -e "\n${BLUE}${BOLD}Select DEFLATE compression level (0-9):${RESET}"
-            echo -e "Default: 1 (higher = better compression but slower)"
-            read -p "Enter compression level: " COMP_LEVEL
-            
-            if [[ "$COMP_LEVEL" =~ ^[0-9]$ ]]; then
-              COMPRESSION="-zdeflate,level=$COMP_LEVEL"
-            else
-              echo -e "${YELLOW}Invalid level. Using default level 1.${RESET}"
-              COMPRESSION="-zdeflate"
-            fi
-            ;;
-          *)
-            COMPRESSION=""
-            echo -e "${BLUE}Using no compression.${RESET}"
-            ;;
+        # Process compression options
+        case "${COMP_LEVEL%%=*}" in
+            "none"|"")
+                COMPRESSION=""
+                ;;
+            "lz4")
+                COMPRESSION="-zlz4"
+                ;;
+            "lz4hc")
+                level="${COMP_LEVEL##*=}"
+                if [[ "$level" =~ ^([0-9]|1[0-2])$ ]]; then
+                    COMPRESSION="-zlz4hc,level=$level"
+                else
+                    COMPRESSION="-zlz4hc"
+                fi
+                ;;
+            "deflate")
+                level="${COMP_LEVEL##*=}"
+                if [[ "$level" =~ ^[0-9]$ ]]; then
+                    COMPRESSION="-zdeflate,level=$level"
+                else
+                    COMPRESSION="-zdeflate"
+                fi
+                ;;
+            *)
+                echo -e "${YELLOW}Invalid compression type. Using no compression.${RESET}"
+                COMPRESSION=""
+                ;;
         esac
         
-        # Create the EROFS image with simplest command
+        # Create the EROFS image
         MKFS_CMD="mkfs.erofs"
-        if [ -n "$COMPRESSION" ]; then
-            MKFS_CMD="$MKFS_CMD $COMPRESSION"
-        fi
+        [ -n "$COMPRESSION" ] && MKFS_CMD="$MKFS_CMD $COMPRESSION"
         MKFS_CMD="$MKFS_CMD $OUTPUT_IMG.tmp $WORK_DIR"
-
-        # Show the command
+        
         echo -e "\n${BLUE}Executing command:${RESET}"
         echo -e "${BOLD}$MKFS_CMD${RESET}\n"
-
-        # Create the EROFS image
-        echo -e "${BLUE}Creating EROFS image... This may take some time.${RESET}\n"
+        
         eval $MKFS_CMD
         
         if [ $? -eq 0 ]; then
@@ -409,8 +406,7 @@ case $FS_CHOICE in
         fi
         ;;
         
-    2)
-        # EXT4 flow
+    "ext4")
         echo -e "\n${BLUE}Calculating image size...${RESET}"
         INPUT_SIZE=$(du -sb "$EXTRACT_DIR" | cut -f1)
         SIZE_WITH_OVERHEAD=$(echo "($INPUT_SIZE * 1.1 + 0.5)/1" | bc)
@@ -474,6 +470,10 @@ if [ -n "$SUDO_USER" ]; then
 fi
 
 # Clear trap before normal exit
+trap - INT TERM EXIT
+cleanup
+
+echo -e "\n${GREEN}${BOLD}Done!${RESET}"
 trap - INT TERM EXIT
 cleanup
 
