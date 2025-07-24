@@ -16,7 +16,7 @@
 # ==============================================================================
 
 
-# --- 1. SETUP LOGGING AND INTERACTIVE INPUT ---
+# --- 1. SETUP LOGGING AND COMMAND-LINE ARGUMENTS ---
 
 LOG_FILE="$(pwd)/finalize_modules.log"
 rm -f "$LOG_FILE"
@@ -24,16 +24,23 @@ exec > >(tee -a "$LOG_FILE") 2>&1
 
 set -x # Enable command tracing for detailed debugging
 
-echo "### Final Module Preparation Script (Interactive, v8 - Bulletproof Loop) ###"
+echo "### Final Module Preparation Script (Non-Interactive, v9 - Bulletproof Loop) ###"
 echo "### LOGGING TO: ${LOG_FILE} ###"
 echo ""
 
-read -p "Enter the full path to the STOCK modules.dep file: " STOCK_MODULES_DEP
-read -p "Enter the full path to the STOCK modules.load file (for the final step): " STOCK_MODULES_LOAD
-read -p "Enter the full path to the CUSTOM compiled module directory (.../staging/lib/modules/kernel_version folder): " CUSTOM_MODULE_DIR
-read -p "Enter the full path to the System.map file: " SYSTEM_MAP_FILE
-read -p "Enter the full path to the llvm-strip tool: " STRIP_TOOL
-read -p "Enter the full path for the FINAL output directory: " FINAL_OUTPUT_DIR
+# Check if correct number of arguments provided
+if [ "$#" -ne 6 ]; then
+    echo "Usage: $0 <STOCK_MODULES.DEP> <STOCK_MODULES.LOAD> <CUSTOM_STAGING_MODULE_DIR> <SYSTEM.MAP_FILE> <PATH_TO_LLVM_STRIP_TOOL> <FINAL_OUTPUT_DIR>"
+    exit 1
+fi
+
+# Assign command line arguments to variables
+STOCK_MODULES_DEP="$1"
+STOCK_MODULES_LOAD="$2"
+CUSTOM_MODULE_DIR="$3"
+SYSTEM_MAP_FILE="$4"
+STRIP_TOOL="$5"
+FINAL_OUTPUT_DIR="$6"
 
 # --- 2. VALIDATION ---
 set +x; echo ""; echo "--> Validating inputs..."; set -x
