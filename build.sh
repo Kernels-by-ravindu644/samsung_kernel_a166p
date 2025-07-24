@@ -100,15 +100,20 @@ build_kernel(){
         cp "${WDIR}/out/target/product/a16xm/obj/KERNEL_OBJ/dist/boot.img" "${WDIR}/dist"
 }
 
+build_kernel || exit 1
+
+build_vendor_boot
+
+# This is only fastbootd compatible, not Odin compatible. So, not adding to the tar.
+build_vendor_dlkm
+
 build_tar(){
     echo -e "\n[INFO] Creating an Odin flashable tar..\n"
 
     cd "${WDIR}/dist"
-    tar -cvf "KernelSU-Next-SM-A166P-${BUILD_KERNEL_VERSION}.tar" boot.img && rm boot.img
+    tar -cvf "KernelSU-Next-SM-A166P-${BUILD_KERNEL_VERSION}.tar" boot.img vendor_boot.img && rm boot.img vendor_boot.img
     echo -e "\n[INFO] Build Finished..!\n"
     cd "${WDIR}"
 }
 
-build_kernel || exit 1
 build_tar
-build_vendor_dlkm

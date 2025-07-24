@@ -137,3 +137,4 @@ vbmeta.img.signed
 #dir
 dist/
 out/
+prebuilts_a166p/boot_editor_v15_r1/
