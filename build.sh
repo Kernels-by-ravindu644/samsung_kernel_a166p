@@ -17,7 +17,7 @@ if [ ! -f ".requirements" ]; then
     echo -e "\n[INFO]: INSTALLING REQUIREMENTS..!\n"
     {
         sudo apt update
-        sudo apt install -y rsync kmod
+        sudo apt install -y rsync kmod git device-tree-compiler lz4 xz-utils zlib1g-dev openjdk-17-jdk gcc g++ python3 python-is-python3 p7zip-full android-sdk-libsparse-utils
     } && touch .requirements
 fi
 
