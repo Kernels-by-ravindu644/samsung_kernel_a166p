@@ -56,7 +56,7 @@ set +x; echo "--> Inputs validated successfully."; set -x
 KERNEL_VERSION=$(basename "$CUSTOM_MODULE_DIR")
 FINAL_MODULE_DIR="${FINAL_OUTPUT_DIR}/lib/modules/${KERNEL_VERSION}"
 set +x; echo "--> Preparing clean output directory..."; set -x
-rm -rf "$FINAL_OUTPUT_DIR"
+rm -rf "$FINAL_OUTPUT_DIR/lib"
 mkdir -p "$FINAL_MODULE_DIR"
 set +x; echo "--> Indexing all available custom .ko files for fast lookup..."; set -x
 declare -A MODULE_MAP
