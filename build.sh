@@ -6,6 +6,9 @@ echo -e "\n[INFO]: BUILD STARTED..!\n"
 export WDIR="$(pwd)"
 mkdir -p "${WDIR}/dist"
 
+# Export scripts to the path
+export PATH=$PATH:${WDIR}/prebuilts_a166p/scripts
+
 # Init submodules
 git submodule init && git submodule update
 
