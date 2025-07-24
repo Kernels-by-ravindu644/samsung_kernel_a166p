@@ -1,0 +1,49 @@
+#!/bin/bash
+
+OUTPUT_PATH="out/target/product/a16xm/obj/KERNEL_OBJ"
+MODULES_BASE="${WDIR}/${OUTPUT_PATH}/staging/lib/modules"
+KERNEL_VERSION=$(ls "${MODULES_BASE}/")
+CUSTOM_MODULE_DIR="${MODULES_BASE}/${KERNEL_VERSION}"
+EXTRACTED_DIR="${WDIR}/prebuilts_a166p/boot_editor_v15_r1/build/unzip_boot/root.1"
+MODULES_DIR="${EXTRACTED_DIR}/lib/modules/${KERNEL_VERSION}"
+
+STOCK_MODULES_DEP="${WDIR}/prebuilts_a166p/vendor_boot/vendor_boot.modules.dep"
+STOCK_MODULES_LOAD="${WDIR}/prebuilts_a166p/vendor_boot/vendor_boot.modules.load"
+SYSTEM_MAP_FILE="${WDIR}/${OUTPUT_PATH}/kernel-5.15/System.map"
+STRIP_TOOL="${WDIR}/kernel/prebuilts/clang/host/linux-x86/clang-r450784e/bin/llvm-strip"
+
+# Packing the LKMs
+pack(){
+    echo -e "\n[INFO]: Packing Loadable Kernel Modules (LKMs)...\n"
+    "${WDIR}/prebuilts_a166p/scripts/lkm_installer" \
+        "$STOCK_MODULES_DEP" \
+        "$STOCK_MODULES_LOAD" \
+        "$CUSTOM_MODULE_DIR" \
+        "$SYSTEM_MAP_FILE" \
+        "$STRIP_TOOL" \
+        "$EXTRACTED_DIR"
+}
+
+flatten(){
+    cd "$MODULES_DIR"
+    mv * ../
+    cd "${WDIR}" && rm -rf "$MODULES_DIR"
+    echo -e "\n[INFO]: Flattened module directory structure.\n"
+}
+
+build(){
+    echo -e "\n[INFO]: Building vendor_boot.img...\n"
+    cd "${WDIR}/prebuilts_a166p/boot_editor_v15_r1/"
+    
+    ./gradlew pack
+
+    mv vendor_boot.img.signed "${WDIR}/dist/vendor_boot.img"
+    cd "${WDIR}"
+}
+
+# Main execution
+pack || exit 1
+flatten || exit 1
+build || exit 1
+
+echo -e "\n[INFO]: vendor_boot build completed successfully!\nOutput image: ${WDIR}/dist/vendor_boot.img\n"
