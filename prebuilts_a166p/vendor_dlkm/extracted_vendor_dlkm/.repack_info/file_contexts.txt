@@ -91,6 +91,15 @@
 /lib/modules/modules.dep u:object_r:vendor_file:s0
 /lib/modules/modules.load u:object_r:vendor_file:s0
 /lib/modules/modules.softdep u:object_r:vendor_file:s0
+/lib/modules/modules.alias.bin u:object_r:vendor_file:s0
+/lib/modules/modules.builtin.alias.bin u:object_r:vendor_file:s0
+/lib/modules/modules.builtin.bin u:object_r:vendor_file:s0
+/lib/modules/modules.dep.bin u:object_r:vendor_file:s0
+/lib/modules/modules.symbols.bin u:object_r:vendor_file:s0
+/lib/modules/modules.builtin u:object_r:vendor_file:s0
+/lib/modules/modules.devname u:object_r:vendor_file:s0
+/lib/modules/modules.order u:object_r:vendor_file:s0
+/lib/modules/modules.symbols u:object_r:vendor_file:s0
 /lib/modules/mt6377-accdet.ko u:object_r:vendor_file:s0
 /lib/modules/mt6835-mt6377.ko u:object_r:vendor_file:s0
 /lib/modules/mtk-afe-external.ko u:object_r:vendor_file:s0
