@@ -438,3 +438,43 @@ config MTK_ADVANCED_80211_MLO
           Will support test if set to 'y',
           otherwise will not support test.
 
+#
+# Mediatek Connectivity Driver Configuration
+#
+
+config WLAN_DRV_MODULE
+	bool "Build Mediatek WLAN driver as a kernel module"
+	default y
+	help
+	  This will build the Mediatek WLAN driver (wlan_drv) and its
+	  dependencies (wmt, chrdev) as loadable kernel modules (.ko).
+	  This is the standard method for Android devices.
+
+	  If unsure, say Y.
+
+config MTK_BT_DRV_EXTERNAL
+	bool "Build Mediatek Bluetooth driver as a kernel module"
+	default y
+	help
+	  This will build the Mediatek Bluetooth driver (bt_drv) as a
+	  loadable kernel module (.ko) from the external source tree.
+
+	  If unsure, say Y.
+
+config MTK_GPS_DRV_EXTERNAL
+	bool "Build Mediatek GPS driver as a kernel module"
+	default y
+	help
+	  This will build the Mediatek GPS driver as a loadable
+	  kernel module (.ko) from the external source tree.
+
+	  If unsure, say Y.
+
+config MTK_FM_DRV_EXTERNAL
+	bool "Build Mediatek FM Radio driver as a kernel module"
+	default y
+	help
+	  This will build the Mediatek FM Radio driver as a loadable
+	  kernel module (.ko) from the external source tree.
+
+	  If unsure, say Y.

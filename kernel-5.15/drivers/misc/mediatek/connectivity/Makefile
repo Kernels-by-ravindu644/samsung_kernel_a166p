@@ -11,10 +11,14 @@
 # GNU General Public License for more details.
 #
 
+ifndef TOP
+    TOP := $(srctree)/..
+endif
+
 # Connectivity combo driver
-# If KERNELRELEASE is defined, we've been invoked from the
-# kernel build system and can use its language.
 ifneq ($(KERNELRELEASE),)
+
+    # Common include paths and flags
     subdir-ccflags-y += -I$(srctree)/
     subdir-ccflags-y += -I$(srctree)/drivers/misc/mediatek/base/power/include
     subdir-ccflags-y += -I$(srctree)/drivers/misc/mediatek/clkbuf/src
@@ -24,77 +28,133 @@ ifneq ($(KERNELRELEASE),)
     subdir-ccflags-y += -I$(srctree)/drivers/clk/mediatek/
     subdir-ccflags-y += -I$(srctree)/drivers/pinctrl/mediatek/
     subdir-ccflags-y += -I$(srctree)/drivers/misc/mediatek/power_throttling/
+    subdir-ccflags-y += -I$(srctree)/drivers/misc/mediatek/connectivity/common
 
-    # Do Nothing, move to standalone repo
-    MODULE_NAME := connadp
-    obj-$(CONFIG_MTK_COMBO) += $(MODULE_NAME).o
+    # --- CORE DEPENDENCIES ---
+    obj-m += connadp.o
 
-    $(MODULE_NAME)-objs += common/connectivity_build_in_adapter.o
-    $(MODULE_NAME)-objs += common/wmt_build_in_adapter.o
-    $(MODULE_NAME)-objs += power_throttling/adapter.o
-    $(MODULE_NAME)-objs += power_throttling/core.o
+    connadp-objs += common/connectivity_build_in_adapter.o
+    connadp-objs += common/wmt_build_in_adapter.o
+    connadp-objs += power_throttling/adapter.o
+    connadp-objs += power_throttling/core.o
+
     ifeq ($(CONFIG_CONN_PWR_DEBUG),y)
-        $(MODULE_NAME)-objs += power_throttling/test.o
+        connadp-objs += power_throttling/test.o
     endif
 
+    # ConnFem driver
+    PATH_TO_CONNFEM_DRV := vendor/mediatek/kernel_modules/connectivity/connfem
+    $(shell ln -s -f $(TOP)/$(PATH_TO_CONNFEM_DRV) $(srctree)/$(src)/connfem_ext)
 
-    ifeq ($(CONFIG_MTK_COMBO), y)
-        ccflags-y += -D CFG_CONNADP_BUILD_IN
-    endif
-    # Do build-in for Makefile checking
-    # export CONFIG_WLAN_DRV_BUILD_IN=y
+    obj-m += connfem_ext/
 
-    ifeq ($(CONFIG_WLAN_DRV_BUILD_IN),y)
-        PATH_TO_WMT_DRV      = vendor/mediatek/kernel_modules/connectivity/common
-        PATH_TO_WLAN_CHR_DRV = vendor/mediatek/kernel_modules/connectivity/wlan/adaptor
-        PATH_TO_WLAN_DRV     = vendor/mediatek/kernel_modules/connectivity/wlan/core/gen4m
+    # WMT driver (Common dependency)
+    PATH_TO_WMT_DRV := vendor/mediatek/kernel_modules/connectivity/common
+    $(shell ln -s -f $(TOP)/$(PATH_TO_WMT_DRV) $(srctree)/$(src)/wmt_drv_ext)
 
-        ABS_PATH_TO_WMT_DRV      = $(srctree)/../$(PATH_TO_WMT_DRV)
-        ABS_PATH_TO_WLAN_CHR_DRV = $(srctree)/../$(PATH_TO_WLAN_CHR_DRV)
-        ABS_PATH_TO_WLAN_DRV     = $(srctree)/../$(PATH_TO_WLAN_DRV)
+    obj-m += wmt_drv_ext/
 
-        # check wlan driver folder
-        ifeq (,$(wildcard $(ABS_PATH_TO_WMT_DRV)))
-            $(error $(ABS_PATH_TO_WMT_DRV) is not existed)
-        endif
-        ifeq (,$(wildcard $(ABS_PATH_TO_WLAN_CHR_DRV)))
-            $(error $(ABS_PATH_TO_WLAN_CHR_DRV) is not existed)
-        endif
-        ifeq (,$(wildcard $(ABS_PATH_TO_WLAN_DRV)))
-            $(error $(ABS_PATH_TO_WLAN_DRV) is not existed)
-        endif
+    # --- Mediatek WLAN Driver ---
+    ifeq ($(CONFIG_WLAN_DRV_MODULE),y)
 
-        $(warning symbolic link to $(PATH_TO_WMT_DRV))
-        $(warning symbolic link to $(PATH_TO_WLAN_CHR_DRV))
-        $(warning symbolic link to $(PATH_TO_WLAN_DRV))
+        PATH_TO_WLAN_CHR_DRV := vendor/mediatek/kernel_modules/connectivity/wlan/adaptor
+        PATH_TO_WLAN_DRV := vendor/mediatek/kernel_modules/connectivity/wlan/core/gen4m
 
-        $(shell unlink $(srctree)/$(src)/wmt_drv)
-        $(shell unlink $(srctree)/$(src)/wmt_chrdev_wifi)
-        $(shell unlink $(srctree)/$(src)/wlan_drv_gen4m)
+        WLAN_HIF_TYPE := axi
 
-        $(shell ln -s $(ABS_PATH_TO_WMT_DRV)      $(srctree)/$(src)/wmt_drv)
-        $(shell ln -s $(ABS_PATH_TO_WLAN_CHR_DRV) $(srctree)/$(src)/wmt_chrdev_wifi)
-        $(shell ln -s $(ABS_PATH_TO_WLAN_DRV)     $(srctree)/$(src)/wlan_drv_gen4m)
+        $(warning Building WLAN driver modules)
+        $(shell ln -s -f $(TOP)/$(PATH_TO_WLAN_CHR_DRV) $(srctree)/$(src)/wmt_chrdev_wifi_ext)
+        $(shell ln -s -f $(TOP)/$(PATH_TO_WLAN_DRV) $(srctree)/$(src)/wlan_drv_gen4m_ext)
 
-        # for gen4m options
+        # Essential WLAN include paths
+        subdir-ccflags-y += -I$(TOP)/$(PATH_TO_WLAN_DRV)/os/linux/include
+        subdir-ccflags-y += -I$(TOP)/$(PATH_TO_WLAN_DRV)/os/none/include
+        subdir-ccflags-y += -I$(TOP)/$(PATH_TO_WLAN_DRV)/os
+        subdir-ccflags-y += -I$(TOP)/$(PATH_TO_WLAN_DRV)/os/linux/hif/$(WLAN_HIF_TYPE)/include
+        subdir-ccflags-y += -I$(TOP)/$(PATH_TO_WLAN_DRV)/os/linux/hif/common/include
+        subdir-ccflags-y += -I$(TOP)/$(PATH_TO_WLAN_DRV)/wlan_service/include
+        subdir-ccflags-y += -I$(TOP)/$(PATH_TO_WLAN_DRV)/include
+        subdir-ccflags-y += -I$(TOP)/$(PATH_TO_WLAN_DRV)/include/nic
+        subdir-ccflags-y += -I$(TOP)/$(PATH_TO_WLAN_DRV)/include/mgmt
+        subdir-ccflags-y += -I$(TOP)/$(PATH_TO_WLAN_DRV)/include/chips
+        subdir-ccflags-y += -I$(TOP)/$(PATH_TO_WLAN_DRV)/include/wpa_supp
+        subdir-ccflags-y += -I$(TOP)/$(PATH_TO_WLAN_DRV)/wlan_service/service/include
+        subdir-ccflags-y += -I$(TOP)/$(PATH_TO_WLAN_DRV)/wlan_service/glue/osal/include
+        subdir-ccflags-y += -I$(TOP)/$(PATH_TO_WLAN_DRV)/wlan_service/glue/hal/include
+        subdir-ccflags-y += -I$(TOP)/vendor/mediatek/kernel_modules/connectivity/wlan/core/gen4m_ext/include
+        subdir-ccflags-y += -I$(TOP)/vendor/mediatek/kernel_modules/connectivity/wlan/core/gen4m_ext/include/mgmt
+        subdir-ccflags-y += -Wno-unused-variable -Wno-unused-but-set-variable
+
+        # Build wmt_chrdev_wifi.ko by pointing to the correct subdirectory
+        # and exporting the variables its internal Kbuild needs.
+        export CONNAC_VER=1_0
+
+        obj-m += wmt_chrdev_wifi_ext/build/connac1x/
+
+        # Build wlan_drv_gen4m_6835.ko
         export CONFIG_MTK_COMBO_WIFI_HIF=axi
-        export MTK_COMBO_CHIP=CONNAC
-        export WLAN_CHIP_ID=6765
+        export MTK_COMBO_CHIP=SOC2_1X1
+        export WLAN_CHIP_ID=6835
         export MTK_ANDROID_WMT=y
+        export MODULE_NAME=wlan_drv_gen4m_6835
 
-        # Do build-in for xxx.c checking
-        subdir-ccflags-y += -D MTK_WCN_REMOVE_KERNEL_MODULE
-        subdir-ccflags-y += -D MTK_WCN_BUILT_IN_DRIVER
-        obj-y += wmt_drv/
-        obj-y += wmt_chrdev_wifi/
-        obj-y += wlan_drv_gen4m/
+        obj-m += wlan_drv_gen4m_ext/
     endif
 
-# Otherwise we were called directly from the command line;
-# invoke the kernel build system.
+    # --- Mediatek Bluetooth Driver ---
+    ifeq ($(CONFIG_MTK_BT_DRV_EXTERNAL),y)
+
+        PATH_TO_BT_DRV := vendor/mediatek/kernel_modules/connectivity/bt
+
+        $(warning Building external BT module from $(PATH_TO_BT_DRV))
+        $(shell ln -s -f $(TOP)/$(PATH_TO_BT_DRV) $(srctree)/$(src)/bt_drv_ext)
+
+        subdir-ccflags-y += -I$(TOP)/$(PATH_TO_BT_DRV)/linux_v2/include
+        subdir-ccflags-y += -I$(TOP)/$(PATH_TO_BT_DRV)/mt66xx/include/btif
+
+        export BT_PLATFORM=connac1x
+        export MTK_PLATFORM=mt6835
+
+        obj-m += bt_drv_ext/mt66xx/wmt/
+    endif
+
+    # --- Mediatek GPS Driver ---
+    ifeq ($(CONFIG_MTK_GPS_DRV_EXTERNAL),y)
+
+        export AUTOCONF_H=$(O)/include/generated/autoconf.h
+
+        PATH_TO_GPS_DRV := vendor/mediatek/kernel_modules/connectivity/gps
+
+        $(warning Building only the necessary GPS modules)
+        $(shell ln -s -f $(TOP)/$(PATH_TO_GPS_DRV) $(srctree)/$(src)/gps_drv_ext)
+
+        subdir-ccflags-y += -I$(TOP)/$(PATH_TO_GPS_DRV)/include
+
+        obj-m += gps_drv_ext/gps_stp/
+        obj-m += gps_drv_ext/gps_pwr/
+    endif
+
+    # --- Mediatek FM Radio Driver ---
+    ifeq ($(CONFIG_MTK_FM_DRV_EXTERNAL),y)
+
+        PATH_TO_FM_DRV := vendor/mediatek/kernel_modules/connectivity/fmradio
+
+        $(warning Building external FM Radio module from $(PATH_TO_FM_DRV))
+        $(shell ln -s -f $(TOP)/$(PATH_TO_FM_DRV) $(srctree)/$(src)/fm_drv_ext)
+
+        subdir-ccflags-y += -I$(TOP)/$(PATH_TO_FM_DRV)/include
+        subdir-ccflags-y += -I$(TOP)/$(PATH_TO_FM_DRV)/Build/mt6631_6635/include
+
+        export CFG_FM_PLAT=mt6631_6635
+        export CFG_BUILD_CONNAC2=false
+
+        obj-m += fm_drv_ext/Build/mt6631_6635/
+    endif
+
 else
+    # Called directly from command line
     KERNELDIR ?= /lib/modules/$(shell uname -r)/build
-    PWD  := $(shell pwd)
+    PWD := $(shell pwd)
 default:
 	$(MAKE) -C $(KERNELDIR) M=$(PWD) modules
 endif
