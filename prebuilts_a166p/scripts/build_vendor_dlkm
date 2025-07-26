@@ -34,16 +34,6 @@ append_dep() {
     fi
 }
 
-# Push prebuilt modules
-prebuilts(){
-    echo -e "\n[INFO]: Pushing prebuilt modules to vendor_dlkm...\n"
-    cp -ar "${WDIR}/prebuilts_a166p/vendor_dlkm/prebuilt_modules/"* "$MODULES_DIR/"
-
-    local dep_file="${MODULES_DIR}/modules.dep"
-    append_dep "$dep_file" "bt_drv_connac1x.ko" "wmt_drv.ko btif_drv.ko connadp.ko ccci_md_all.ko ccci_auxadc.ko ccci_util_lib.ko ccmni.ko rps_perf.ko mtk_pbm.ko mtk_mdpm.ko mtk_dynamic_loading_throttling.ko mtk_low_battery_throttling.ko"
-    append_dep "$dep_file" "wlan_drv_gen4m_6835.ko" "mddp.ko wmt_chrdev_wifi.ko wmt_drv.ko btif_drv.ko connadp.ko ccci_md_all.ko ccci_auxadc.ko ccci_util_lib.ko ccmni.ko rps_perf.ko mtk_pbm.ko mtk_mdpm.ko mtk_dynamic_loading_throttling.ko mtk_low_battery_throttling.ko"
-}
-
 flatten(){
     cd "$MODULES_DIR"
     mv * ../
@@ -65,7 +55,6 @@ build(){
 
 # Main execution
 pack || exit 1
-prebuilts || exit 1
 flatten || exit 1
 build || exit 1
 
