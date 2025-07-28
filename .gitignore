@@ -138,3 +138,13 @@ vbmeta.img.signed
 dist/
 out/
 prebuilts_a166p/boot_editor_v15_r1/
+kernel-5.15/drivers/misc/mediatek/connectivity/bt_drv_ext
+kernel-5.15/drivers/misc/mediatek/connectivity/connfem_ext
+kernel-5.15/drivers/misc/mediatek/connectivity/fm_drv_ext
+kernel-5.15/drivers/misc/mediatek/connectivity/gps_drv_ext
+kernel-5.15/drivers/misc/mediatek/connectivity/wlan_drv_gen4m_ext
+kernel-5.15/drivers/misc/mediatek/connectivity/wmt_chrdev_wifi_ext
+kernel-5.15/drivers/misc/mediatek/connectivity/wmt_drv_ext
+kernel/prebuilts
+prebuilts
+prebuilts_a166p/vendor_dlkm/extracted_vendor_dlkm/lib/modules/
