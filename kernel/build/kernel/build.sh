@@ -647,6 +647,15 @@ if [ "${SKIP_DEFCONFIG}" != "1" ] ; then
     eval ${POST_DEFCONFIG_CMDS}
     set +x
   fi
+
+  # merge custom defconfigs
+  if [ -n "${CUSTOM_DEFCONFIGS_LIST}" ]; then
+    echo "========================================================"
+    echo " Merging custom defconfig with .config"
+    (cd ${OUT_DIR} && ${MERGE_CONFIG} -m .config ${CUSTOM_DEFCONFIGS_LIST})
+    (cd ${OUT_DIR} && make O=${OUT_DIR} ${TOOL_ARGS} "${MAKE_ARGS[@]}" olddefconfig)
+  fi
+
 fi
 
 if [ "${LTO}" = "none" -o "${LTO}" = "thin" -o "${LTO}" = "full" ]; then

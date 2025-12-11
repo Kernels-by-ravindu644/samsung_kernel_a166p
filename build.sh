@@ -48,6 +48,15 @@ if [ "$MAKE_MENUCONFIG" = "1" ]; then
     export HERMETIC_TOOLCHAIN=0
 fi
 
+# custom defconfigs support
+export MERGE_CONFIG="${SCRIPT_DIR}/kernel-5.15/scripts/kconfig/merge_config.sh"
+if [ -d "${SCRIPT_DIR}/custom_defconfigs" ]; then
+    CUSTOM_DEFCONFIGS_LIST=$(find "${SCRIPT_DIR}/custom_defconfigs" -maxdepth 1 -type f -exec realpath {} \; | tr '\n' ' ')
+else
+    CUSTOM_DEFCONFIGS_LIST=""
+fi
+export CUSTOM_DEFCONFIGS_LIST
+
 # build the kernel
 build_kernel(){
     cd "${SCRIPT_DIR}/kernel"
