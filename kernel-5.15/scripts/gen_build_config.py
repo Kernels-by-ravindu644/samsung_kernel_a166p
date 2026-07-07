@@ -13,9 +13,9 @@ import re
 # Parse project defconfig to get special config file, build config file and out-of-tree kernel modules
 def get_config_in_defconfig(file_name, kernel_dir):
     file_handle = open(file_name, 'r')
-    pattern_cficlang = re.compile('^CONFIG_CFI_CLANG\s*=\s*(.+)$')
-    pattern_buildconfig = re.compile('^CONFIG_BUILD_CONFIG_FILE\s*=\s*(.+)$')
-    pattern_extmodules = re.compile('^CONFIG_EXT_MODULES\s*=\s*(.+)$')
+    pattern_cficlang = re.compile(r'^CONFIG_CFI_CLANG\s*=\s*(.+)$')
+    pattern_buildconfig = re.compile(r'^CONFIG_BUILD_CONFIG_FILE\s*=\s*(.+)$')
+    pattern_extmodules = re.compile(r'^CONFIG_EXT_MODULES\s*=\s*(.+)$')
     special_defconfig = ''
     build_config = ''
     ext_modules = ''
@@ -98,13 +98,13 @@ def main(**args):
         file_handle = open(build_config, 'r')
         for line in file_handle.readlines():
             line_strip = line.strip()
-            pattern_cc = re.compile('^CC\s*=\s*(.+)$')
+            pattern_cc = re.compile(r'^CC\s*=\s*(.+)$')
             result = pattern_cc.match(line_strip)
             if result:
                 line_strip = 'CC=\"${CC_WRAPPER} %s\"' % (result.group(1).strip())
             line_strip = line_strip.replace("$$","$")
             file_text.append(line_strip)
-            pattern_kernel_dir = re.compile('^KERNEL_DIR\s*=\s*(.+)$')
+            pattern_kernel_dir = re.compile(r'^KERNEL_DIR\s*=\s*(.+)$')
             result = pattern_kernel_dir.match(line_strip)
             if result:
                 kernel_dir = result.group(1).strip('')
@@ -178,7 +178,7 @@ def main(**args):
         file_handle = open(gki_build_config, 'r')
         for line in file_handle.readlines():
             line_strip = line.strip()
-            pattern_source = re.compile('^\.\s.+$')
+            pattern_source = re.compile(r'^\.\s.+$')
             result = pattern_source.match(line_strip)
             if not result:
                 file_text.append(line_strip)
@@ -200,7 +200,7 @@ def main(**args):
     file_handle.write(kernel_defconfig_cmds + '\n')
 
     file_handle.write('\nBUILD_CONFIG_FRAGMENTS="${KERNEL_DIR}/build.config.common"\n')
-    file_handle.write('GET_CONFIG_ABI_MONITOR=`grep \"^CONFIG_ABI_MONITOR\s*=\s*y\" ${KERNEL_DEFCONFIG_FILE} | xargs`\n')
+    file_handle.write('GET_CONFIG_ABI_MONITOR=`grep \"^CONFIG_ABI_MONITOR[[:space:]]*=[[:space:]]*y\" ${KERNEL_DEFCONFIG_FILE} | xargs`\n')
     file_handle.write('if [ "${KERNEL_BUILD_MODE}" == "user" ] && [ "x${GET_CONFIG_ABI_MONITOR}" != "x" ]; then\n')
     file_handle.write('  DO_ABI_MONITOR=1\n')
     build_config_fragments = '  BUILD_CONFIG_FRAGMENTS="${BUILD_CONFIG_FRAGMENTS} ${REL_GEN_BUILD_CONFIG_DIR}/%s' % (os.path.basename(gen_build_config_gki))
