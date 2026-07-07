@@ -14,7 +14,8 @@ if [[ ! -d "${SCRIPT_DIR}/kernel/prebuilts" || ! -d "${SCRIPT_DIR}/prebuilts" ]]
 fi
 
 # cleanup before building
-rm -rf "${SCRIPT_DIR}/out"
+rm -rf "${SCRIPT_DIR}/"{out,dist} && \
+    mkdir -p "${SCRIPT_DIR}/"{out,dist}
 
 # generate the build.config
 cd "${SCRIPT_DIR}/kernel-5.15" && \
@@ -61,9 +62,14 @@ export CUSTOM_DEFCONFIGS_LIST
 build_kernel(){
     cd "${SCRIPT_DIR}/kernel"
 
-    env "${GKI_KERNEL_BUILD_OPTIONS[@]}" ./build/build.sh
+    set -e
+    env "${GKI_KERNEL_BUILD_OPTIONS[@]}" ./build/build.sh && \
+        cp \
+        "${SCRIPT_DIR}/out/target/product/a16xm/obj/KERNEL_OBJ/kernel-5.15/arch/arm64/boot/Image"* \
+        "${SCRIPT_DIR}/dist"
+    set +e
 
     cd "${SCRIPT_DIR}"
 }
 
-build_kernel || exit 1
+build_kernel
