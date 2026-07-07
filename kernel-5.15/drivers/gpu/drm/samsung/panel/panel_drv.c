@@ -759,6 +759,12 @@ __visible_for_testing struct panel_gpio *panel_get_gpio(struct panel_device *pan
 	return gp;
 }
 
+__visible_for_testing int panel_get_gpio_num(struct panel_device *panel,
+		enum panel_gpio_lists panel_gpio_id)
+{
+	return panel_gpio_helper_get_num(panel_get_gpio(panel, panel_gpio_id));
+}
+
 __visible_for_testing int panel_get_gpio_value(struct panel_device *panel,
 		enum panel_gpio_lists panel_gpio_id)
 {
@@ -4720,6 +4726,77 @@ do_exit:
 	return ret;
 }
 
+__visible_for_testing int panel_reset_high(struct panel_device *panel)
+{
+	struct panel_state *state;
+
+	if (!panel)
+		return -EINVAL;
+
+	state = &panel->state;
+	panel_err("panel_reset_high start\n");
+
+	if (panel_bypass_is_on(panel)) {
+		panel_print_bypass_reason(panel);
+		return 0;
+	}
+
+	if (panel_get_cur_state(panel) == PANEL_STATE_OFF ||
+		panel_get_cur_state(panel) == PANEL_STATE_ON) {
+		panel_warn("invalid state\n");
+		return 0;
+	}
+
+	if (panel_is_gpio_valid(panel, PANEL_GPIO_RESET)) {
+		panel_err("panel_reset_high reset_pin=%d, value=%d\n",
+			panel_get_gpio_num(panel, PANEL_GPIO_RESET), panel_get_gpio_value(panel, PANEL_GPIO_RESET));
+	} else {
+		panel_err("gpio(%s) not exist\n", panel_get_gpio_name(panel, PANEL_GPIO_RESET));
+		return -EINVAL;
+	}
+	panel_set_gpio_value(panel, PANEL_GPIO_RESET, 1);
+	panel_err("panel_reset_high reset_pin=%d, value=%d\n",
+				panel_get_gpio_num(panel, PANEL_GPIO_RESET), panel_get_gpio_value(panel, PANEL_GPIO_RESET));
+
+	return 0;
+}
+
+__visible_for_testing int panel_reset_low(struct panel_device *panel)
+{
+	struct panel_state *state;
+
+	if (!panel)
+		return -EINVAL;
+
+	state = &panel->state;
+	panel_err("panel_reset_low start\n");
+
+	if (panel_bypass_is_on(panel)) {
+		panel_print_bypass_reason(panel);
+		return 0;
+	}
+
+	if (panel_get_cur_state(panel) == PANEL_STATE_OFF ||
+		panel_get_cur_state(panel) == PANEL_STATE_ON) {
+		panel_warn("invalid state\n");
+		return 0;
+	}
+
+	if (panel_is_gpio_valid(panel, PANEL_GPIO_RESET)) {
+		panel_err("panel_reset_low reset_pin=%d, value=%d\n",
+			panel_get_gpio_num(panel, PANEL_GPIO_RESET), panel_get_gpio_value(panel, PANEL_GPIO_RESET));
+	} else {
+		panel_err("gpio(%s) not exist\n", panel_get_gpio_name(panel, PANEL_GPIO_RESET));
+		return -EINVAL;
+	}
+	panel_set_gpio_value(panel, PANEL_GPIO_RESET, 0);
+	panel_err("panel_reset_low reset_pin=%d, value=%d\n",
+				panel_get_gpio_num(panel, PANEL_GPIO_RESET), panel_get_gpio_value(panel, PANEL_GPIO_RESET));
+
+	return 0;
+}
+
+
 #if IS_ENABLED(CONFIG_USDM_PANEL_BIG_LOCK)
 __visible_for_testing int panel_lock_from_commit(struct panel_device *panel)
 {
@@ -6073,6 +6150,7 @@ int panel_drv_set_gpios(struct panel_device *panel)
 		panel->state.fsync_event_on = PANEL_FSYNC_EVENT_OFF;
 		panel_set_gpio_value(panel, PANEL_GPIO_RESET, 0);
 	}
+
 #if IS_ENABLED(CONFIG_SEC_PANEL_NOTIFIER_V2)
 	panel_send_ubconn_notify(panel->state.connected == PANEL_STATE_OK ?
 		PANEL_EVENT_UB_CON_STATE_CONNECTED : PANEL_EVENT_UB_CON_STATE_DISCONNECTED);
@@ -7170,6 +7248,8 @@ struct panel_drv_funcs panel_drv_funcs = {
 	.display_off = panel_display_off,
 	.power_on = panel_power_on,
 	.power_off = panel_power_off,
+	.panel_reset_high = panel_reset_high,
+	.panel_reset_low = panel_reset_low,
 
 #if IS_ENABLED(CONFIG_USDM_PANEL_BIG_LOCK)
 	.lock = panel_lock_from_commit,

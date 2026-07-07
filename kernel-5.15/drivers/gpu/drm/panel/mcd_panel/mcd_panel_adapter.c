@@ -882,6 +882,34 @@ static int mcd_panel_set_power(struct mtk_panel *ctx, int power)
 	return 0;
 }
 
+static int mcd_panel_reset(struct mtk_panel *ctx, int on)
+{
+	int ret;
+
+	if (!ctx)
+		return -EINVAL;
+
+	if (!ctx->mcd_panel_dev)
+		return -ENODEV;
+	printk("%s start\n", __func__);
+
+	if (on) {
+		ret = call_mcd_panel_func(ctx->mcd_panel_dev, panel_reset_high);
+		if (ret < 0) {
+			dev_err(ctx->dev, "%s failed to set reset pin high %d\n", __func__, ret);
+			return ret;
+		}
+	} else {
+		ret = call_mcd_panel_func(ctx->mcd_panel_dev, panel_reset_low);
+		if (ret < 0) {
+			dev_err(ctx->dev, "%s failed to set reset pin low %d\n", __func__, ret);
+			return ret;
+		}
+	}
+
+	return 0;
+}
+
 void mcd_panel_poweroff(void)
 {
 	printk("%s, + fanny\n", __func__);
@@ -1036,6 +1064,18 @@ static int mtk_panel_ext_set_power(struct drm_panel *panel, int power)
 			__func__, dev_name(ctx->dev), power);
 
 	mcd_panel_set_power(ctx, power);
+
+	return 0;
+}
+
+static int panel_ext_reset(struct drm_panel *panel, int on)
+{
+	struct mtk_panel *ctx = container_of(panel, struct mtk_panel, panel);
+
+	pr_debug("%s: dev_name(%s) on(%d)\n",
+			__func__, dev_name(ctx->dev), on);
+
+	mcd_panel_reset(ctx, on);
 
 	return 0;
 }
@@ -1348,6 +1388,7 @@ static int lcm_setbacklight_cmdq(void *dsi, dcs_write_gce cb,
 }
 
 static struct mtk_panel_funcs ext_funcs = {
+	.reset = panel_ext_reset,
 	.set_power = mtk_panel_ext_set_power,
 #if IS_ENABLED(CONFIG_USDM_PANEL_BIG_LOCK)
 	.set_panel_lock = mtk_panel_ext_set_panel_lock,

@@ -71,6 +71,7 @@ int dsi0_panel_id = -1;
 EXPORT_SYMBOL(dsi0_panel_id);
 
 #define INIT_TID 1
+#define PANIC_LCM_RESET 1
 
 #if IS_ENABLED(CONFIG_DEBUG_FS)
 static struct dentry *mtkfb_dbgfs;
@@ -2756,6 +2757,8 @@ static void ipanic_lcm_reset(void)
 	struct mtk_drm_private *priv;
 	int enable;
 
+	DDPPR_ERR("%s start\n", __func__);
+
 	if (IS_ERR_OR_NULL(drm_dev)) {
 		DDPPR_ERR("%s, invalid drm dev\n", __func__);
 		return;
@@ -2778,6 +2781,16 @@ static void ipanic_lcm_reset(void)
 		return;
 	}
 
+#if PANIC_LCM_RESET
+	DDPPR_ERR("PANIC_LCM_RESET\n");
+//+bug P250407-03982,sunzhong.lx,ADD,20250417,During panic, the screen goes dark for too long, causing a panic exception.
+	enable = 0;
+	comp->funcs->io_cmd(comp, NULL, LCM_RESET, &enable);
+	mdelay(10);
+	enable = 1;
+	comp->funcs->io_cmd(comp, NULL, LCM_RESET, &enable);
+//-bug P250407-03982,sunzhong.lx,ADD,20250417,During panic, the screen goes dark for too long, causing a panic exception.
+#else
 	enable = 0;
 	//+bug S98901AA1-13937,gaobowei.wt,ADD,20241218,when panic exception the screen has abnormal display issues.
 	comp->funcs->io_cmd(comp, NULL, LCM_POWER_OFF, &enable);
@@ -2787,6 +2800,7 @@ static void ipanic_lcm_reset(void)
 	comp->funcs->io_cmd(comp, NULL, LCM_RESET, &enable);
 	*/
 	//-bug S98901AA1-13937,gaobowei.wt,ADD,20241218,when panic exception the screen has abnormal display issues.
+#endif
 }
 #endif
 

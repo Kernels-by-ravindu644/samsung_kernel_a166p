@@ -57,6 +57,10 @@
 #include <asm/cacheflush.h>
 #include <asm/syscall.h>	/* for syscall_get_* */
 
+#ifdef CONFIG_SAMSUNG_FREECESS
+#include <linux/freecess.h>
+#endif
+
 #undef CREATE_TRACE_POINTS
 #include <trace/hooks/signal.h>
 #include <trace/hooks/dtask.h>
@@ -1307,6 +1311,18 @@ int do_send_sig_info(int sig, struct kernel_siginfo *info, struct task_struct *p
 	unsigned long flags;
 	int ret = -ESRCH;
 	trace_android_vh_do_send_sig_info(sig, current, p);
+
+#ifdef CONFIG_SAMSUNG_FREECESS
+	/*
+	 * System will send SIGIO to the app that locked the file when other apps access the file.
+	 * Report SIGIO to prevent other apps from getting stuck
+	 */
+	if ((sig == SIGKILL || sig == SIGTERM || sig == SIGABRT || sig == SIGQUIT || sig == SIGIO)) {
+		/* Report pid if signal is fatal */
+		sig_report(p, sig != SIGIO);
+	}
+#endif
+
 	if (lock_task_sighand(p, &flags)) {
 		ret = send_signal(sig, info, p, type);
 		unlock_task_sighand(p, &flags);
@@ -1947,10 +1963,11 @@ struct sigqueue *sigqueue_alloc(void)
 
 void sigqueue_free(struct sigqueue *q)
 {
-	unsigned long flags;
 	spinlock_t *lock = &current->sighand->siglock;
+	unsigned long flags;
 
-	BUG_ON(!(q->flags & SIGQUEUE_PREALLOC));
+	if (WARN_ON_ONCE(!(q->flags & SIGQUEUE_PREALLOC)))
+		return;
 	/*
 	 * We must hold ->siglock while testing q->list
 	 * to serialize with collect_signal() or with
@@ -1978,7 +1995,10 @@ int send_sigqueue(struct sigqueue *q, struct pid *pid, enum pid_type type)
 	unsigned long flags;
 	int ret, result;
 
-	BUG_ON(!(q->flags & SIGQUEUE_PREALLOC));
+	if (WARN_ON_ONCE(!(q->flags & SIGQUEUE_PREALLOC)))
+		return 0;
+	if (WARN_ON_ONCE(q->info.si_code != SI_TIMER))
+		return 0;
 
 	ret = -1;
 	rcu_read_lock();
@@ -1997,7 +2017,6 @@ int send_sigqueue(struct sigqueue *q, struct pid *pid, enum pid_type type)
 		 * If an SI_TIMER entry is already queue just increment
 		 * the overrun count.
 		 */
-		BUG_ON(q->info.si_code != SI_TIMER);
 		q->info.si_overrun++;
 		result = TRACE_SIGNAL_ALREADY_PENDING;
 		goto out;
@@ -4697,6 +4716,7 @@ __weak const char *arch_vma_name(struct vm_area_struct *vma)
 {
 	return NULL;
 }
+EXPORT_SYMBOL_GPL(arch_vma_name);
 
 static inline void siginfo_buildtime_checks(void)
 {

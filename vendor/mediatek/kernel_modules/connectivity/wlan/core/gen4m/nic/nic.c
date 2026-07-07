@@ -5865,6 +5865,9 @@ uint32_t nicApplyNetworkAddress(struct ADAPTER
 
 		aucMacAddr = prAdapter->rWifiVar.aucInterfaceAddress[i];
 		COPY_MAC_ADDR(aucMacAddr, prAdapter->rWifiVar.aucP2pDevAddr[i]);
+		//+EXTB P250117-02603, liupeng8@lx, add 20250617, follow SS sep vesion modify
+		//aucMacAddr[4] ^= P2P_DEV_MAC_5TH_BYTE_MASK;
+		//-EXTB P250117-02603, liupeng8@lx, add 20250617, follow SS sep vesion modify
 
 		DBGLOG(NIC, INFO,
 			"P2P[%u] DEV mac:" MACSTR " INF mac:" MACSTR "\n",

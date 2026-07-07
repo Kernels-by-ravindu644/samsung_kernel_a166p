@@ -321,7 +321,7 @@ static int sec_enhanced_boot_stat_proc_show(struct seq_file *m, void *v)
 	seq_puts(m, "BOOTLOADER - KERNEL\n");
 	seq_puts(m, "---------------------------------------------------------------------------------------------------------------\n");
 	seq_printf(m, "%-90s %6u %6u %6u %4d %4d %4d\n", "!@Boot_EBS_B: boot_time_pl_t", bootingtime_preloader, 0, bootingtime_preloader, 0, 0, 0);
-	seq_printf(m, "%-90s %6u %6u %6u %4d %4d %4d\n", "!@Boot_EBS_B: boot_time_lk", bootingtime_lk, 0, bootingtime_lk, 0, 0, 0);
+	seq_printf(m, "%-90s %6u %6u %6u %4d %4d %4d\n", "!@Boot_EBS_B: boot_time_lk", mct_start_kernel, 0, bootingtime_lk, 0, 0, 0);
 	seq_printf(m, "%-90s %6u %6u %6u %4d %4d %4d\n", "!@Boot_EBS_B: boot_time_kernel", mct_start_kernel, 0, mct_start_kernel, 0, 0, 0);
 	seq_printf(m, "%-90s %6u %6u %6u\n", "start booting on bootloader", 0, 0, 0);
 	seq_printf(m, "%-90s %6u %6u %6u\n", "start booting on kernel", mct_start_kernel, 0, mct_start_kernel);

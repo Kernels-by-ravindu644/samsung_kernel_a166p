@@ -8872,6 +8872,11 @@ void mtk_crtc_set_dirty(struct mtk_drm_crtc *mtk_crtc)
 		return;
 	}
 
+	if (mtk_crtc->cust_skip_frame) {
+		pr_info("%s : cust_skip_frame!\n", __func__);
+		return;
+	}
+
 	cb_data = kmalloc(sizeof(*cb_data), GFP_KERNEL);
 	if (!cb_data) {
 		DDPINFO("%s:%d, cb data creation failed\n",

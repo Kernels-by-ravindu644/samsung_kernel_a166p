@@ -75,6 +75,8 @@
 				firmware_class.path=/vendor/firmware,/efs/wifi pelt=8 \
 				androidboot.hardware=mt6835 \
 				printk.devkmsg=on \
+				cgroup.memory=nokmem,nosocket \
+				slab_merge \
 				kcompactd=0x3f";
 		kaslr-seed = <0 0>;
 	};

@@ -110,6 +110,7 @@ void wdt_enable_irq(struct ccci_modem *md)
 {
 	if (atomic_cmpxchg(&md->wdt_enabled, 0, 1) == 0) {
 		enable_irq(md->md_wdt_irq_id);
+		md_wdt_rec.time[2] = local_clock();
 		CCCI_NORMAL_LOG(0, TAG, "enable wdt irq\n");
 	}
 }
@@ -122,6 +123,7 @@ void wdt_disable_irq(struct ccci_modem *md)
 		 * if use disable_irq in isr, system will hang
 		 */
 		disable_irq_nosync(md->md_wdt_irq_id);
+		md_wdt_rec.time[1] = local_clock();
 		/*CCCI_NORMAL_LOG(0, TAG, "disable wdt irq\n");*/
 	}
 }
@@ -129,6 +131,10 @@ void wdt_disable_irq(struct ccci_modem *md)
 static irqreturn_t md_cd_wdt_isr(int irq, void *data)
 {
 	struct ccci_modem *md = (struct ccci_modem *)data;
+
+	md_wdt_rec.time[0] = local_clock();
+	md_wdt_rec.isr_cnt++;
+	md_wdt_rec.reset_flg = 0;
 
 	//CCCI_ERROR_LOG(0, TAG, "MD WDT IRQ\n");
 	//ccci_event_log("md: MD WDT IRQ\n");

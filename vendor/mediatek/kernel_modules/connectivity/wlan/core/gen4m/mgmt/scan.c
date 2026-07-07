@@ -3209,7 +3209,7 @@ struct BSS_DESC *scanAddToBssDesc(struct ADAPTER *prAdapter,
 #endif
 
 			scanCheckAdaptive11rIE(pucIE, prBssDesc);
-
+			scanCheckCiscoCCXIE(pucIE, prBssDesc);
 			scanParseCheckMTKOuiIE(prAdapter,
 				pucIE, prBssDesc, eHwBand,
 				prWlanBeaconFrame->u2FrameCtrl &

@@ -1165,6 +1165,8 @@ struct PMKID_ENTRY *aisSearchPmkidEntry(struct ADAPTER *prAdapter,
 {
 	struct PMKID_ENTRY *entry = NULL;
 	struct PARAM_SSID rSsid = {0};
+	uint8_t *prBssid = prBssDesc->aucBSSID;
+	uint8_t *prFilsCacheId = NULL;
 
 #if (CFG_TC10_FEATURE == 1)
 	if (IS_FEATURE_ENABLED(prAdapter->rWifiVar.ucSinglePMK) && prBssDesc &&
@@ -1173,6 +1175,7 @@ struct PMKID_ENTRY *aisSearchPmkidEntry(struct ADAPTER *prAdapter,
 		kalMemZero(&rSsid, sizeof(struct PARAM_SSID));
 		COPY_SSID(rSsid.aucSsid, rSsid.u4SsidLen,
 			prBssDesc->aucSSID, prBssDesc->ucSSIDLen);
+		prBssid = NULL;
 	}
 #endif
 
@@ -1189,14 +1192,19 @@ struct PMKID_ENTRY *aisSearchPmkidEntry(struct ADAPTER *prAdapter,
 
 #if (CFG_SUPPORT_802_11BE_MLO == 1)
 	if (mldIsMultiLinkFormed(prAdapter, prAisBssInfo->prStaRecOfAP)) {
-		entry = rsnSearchPmkidEntry(prAdapter,
+		entry = rsnSearchPmkidEntryEx(prAdapter,
 			prBssDesc->rMlInfo.aucMldAddr,
+			&rSsid,
+			prFilsCacheId,
 			prAisBssInfo->ucBssIndex);
 	} else
 #endif
-		entry = rsnSearchPmkidEntry(prAdapter,
-			prBssDesc->aucBSSID,
-			prAisBssInfo->ucBssIndex);
+
+		entry = rsnSearchPmkidEntryEx(prAdapter,
+			prBssid, /* bssid */
+			&rSsid, /* SSDID */
+			prFilsCacheId, /* cache id */
+			prAisBssInfo->ucBssIndex); /* pmksa of main link*/
 
 	/* do not use invalid PMKID */
 	if (entry && rsnApInvalidPMK(entry->u2StatusCode))

@@ -1620,7 +1620,9 @@ try_again:
 				prAisBssInfo->aucBSSID)) {
 			u2ScoreTotal = scanCalculateScoreByCu(
 				prAdapter, prBssDesc, eRoamReason, ucBssIndex);
-			if (u2ScoreTotal < goal) {
+
+			if ((u2ScoreTotal < goal) &&
+				(!prAdapter->rNchoInfo.fgNCHOEnabled))  {
 				log_dbg(SCN, WARN,
 					MACSTR " reason %d, score %d < %d\n",
 					MAC2STR(prBssDesc->aucBSSID),

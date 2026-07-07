@@ -270,6 +270,8 @@ struct panel_drv_funcs {
 	int (*display_off)(struct panel_device *);
 	int (*power_on)(struct panel_device *);
 	int (*power_off)(struct panel_device *);
+	int (*panel_reset_high)(struct panel_device *);
+	int (*panel_reset_low)(struct panel_device *);
 	int (*debug_dump)(struct panel_device *);
 	int (*doze)(struct panel_device *);
 	int (*doze_suspend)(struct panel_device *);
