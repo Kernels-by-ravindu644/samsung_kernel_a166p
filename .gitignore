@@ -7,6 +7,7 @@
 /kernel/delta.txt
 /kernel/ksymtab.txt
 /kernel/symbollist.txt
+/custom_defconfigs/version_defconfig
 *.patch
 *.orig
 *.reg
