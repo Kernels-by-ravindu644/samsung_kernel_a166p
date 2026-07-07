@@ -6,3 +6,7 @@ CONFIG_FIVE=n
 
 # KernelSU-Next
 CONFIG_KSU=y
+
+# BBG - https://github.com/vc-teahouse/Baseband-guard
+CONFIG_BBG=y
+CONFIG_LSM="landlock,lockdown,yama,loadpin,safesetid,integrity,selinux,smack,tomoyo,apparmor,bpf,baseband_guard"

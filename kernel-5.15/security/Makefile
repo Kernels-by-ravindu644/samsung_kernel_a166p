@@ -30,3 +30,5 @@ obj-$(CONFIG_INTEGRITY)			+= integrity/
 
 # DEFEX
 obj-$(CONFIG_SECURITY_DEFEX)		+= samsung/defex_lsm/
+
+obj-$(CONFIG_BBG) += baseband-guard/
