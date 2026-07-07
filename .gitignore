@@ -1,0 +1,15 @@
+/prebuilts
+/kernel/prebuilts
+/dist
+/out
+/kernel-5.15/security/samsung/defex_lsm/defex_packed_rules.bin
+/kernel-5.15/security/samsung/defex_lsm/pack_rules
+/kernel/delta.txt
+/kernel/ksymtab.txt
+/kernel/symbollist.txt
+*.patch
+*.orig
+*.reg
+*.zip
+*.tar
+*.tar.gz
