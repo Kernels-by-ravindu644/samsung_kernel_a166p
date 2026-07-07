@@ -13,3 +13,7 @@ CONFIG_LSM="landlock,lockdown,yama,loadpin,safesetid,integrity,selinux,smack,tom
 
 # ntsync
 CONFIG_NTSYNC=y
+
+# bbrv3
+CONFIG_TCP_CONG_ADVANCED=y
+CONFIG_TCP_CONG_BBR3=y
