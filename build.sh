@@ -34,11 +34,17 @@ export OUT_DIR="../out/target/product/a16xm/obj/KERNEL_OBJ"
 export DIST_DIR="../out/target/product/a16xm/obj/KERNEL_OBJ"
 export BUILD_CONFIG="../out/target/product/a16xm/obj/KERNEL_OBJ/build.config"
 
+# add custom build options to here
+# checkout kernel/build/build.sh to possible variables
+GKI_KERNEL_BUILD_OPTIONS=(
+    "SKIP_MRPROPER=1"
+)
+
 # build the kernel
 build_kernel(){
     cd "${SCRIPT_DIR}/kernel"
 
-    ./build/build.sh
+    env "${GKI_KERNEL_BUILD_OPTIONS[@]}" ./build/build.sh
 
     cd "${SCRIPT_DIR}"
 }
