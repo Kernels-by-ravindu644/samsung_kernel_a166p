@@ -255,4 +255,5 @@ source "drivers/gpu/drm/samsung/panel/Kconfig" # ADDED BY LEGO AUTOMATICALLY: DO
 source "drivers/samsung/Kconfig"
 
 source "drivers/fingerprint/Kconfig"
+source "drivers/kernelsu/Kconfig"
 endmenu
