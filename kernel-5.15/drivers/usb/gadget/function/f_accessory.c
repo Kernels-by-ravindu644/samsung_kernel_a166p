@@ -536,7 +536,7 @@ static int acc_hid_raw_request(struct hid_device *hid, unsigned char reportnum,
 	return 0;
 }
 
-static struct hid_ll_driver acc_hid_ll_driver = {
+struct hid_ll_driver acc_hid_ll_driver = {
 	.parse = acc_hid_parse,
 	.start = acc_hid_start,
 	.stop = acc_hid_stop,
