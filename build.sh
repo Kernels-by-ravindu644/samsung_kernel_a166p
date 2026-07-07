@@ -52,7 +52,23 @@ GKI_KERNEL_BUILD_OPTIONS=(
     "SKIP_MRPROPER=1"
     "KMI_SYMBOL_LIST_STRICT_MODE=0"
     "ABI_DEFINITION="
+    "BUILD_BOOT_IMG=1"
+    "MKBOOTIMG_PATH=${SCRIPT_DIR}/tools/mkbootimg/mkbootimg.py"
+    "KERNEL_BINARY=../kernel-5.15/arch/arm64/boot/Image.gz"
+    "BOOT_IMAGE_HEADER_VERSION=4"
+    "SKIP_VENDOR_BOOT=1"
+    "AVB_SIGN_BOOT_IMG=1"
+    "AVB_BOOT_PARTITION_SIZE=67108864"
+    "AVB_BOOT_KEY=${SCRIPT_DIR}/tools/mkbootimg/tests/data/testkey_rsa2048.pem"
+    "AVB_BOOT_ALGORITHM=SHA256_RSA2048"
+    "AVB_BOOT_PARTITION_NAME=boot"
 )
+# mkbootimg extra args to build the boot.img
+export MKBOOTIMG_EXTRA_ARGS="
+    --os_version 13.0.0 \
+    --os_patch_level 2026-04-00 \
+    --pagesize 4096 \
+"
 
 # run menuconfig only if you want to.
 export MAKE_MENUCONFIG=0
@@ -77,6 +93,7 @@ build_kernel(){
     env "${GKI_KERNEL_BUILD_OPTIONS[@]}" ./build/build.sh && \
         cp \
         "${SCRIPT_DIR}/out/target/product/a16xm/obj/KERNEL_OBJ/kernel-5.15/arch/arm64/boot/Image"* \
+        "${SCRIPT_DIR}/out/target/product/a16xm/obj/KERNEL_OBJ/dist/boot.img" \
         "${SCRIPT_DIR}/dist"
     set +e
 
