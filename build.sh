@@ -38,6 +38,7 @@ export BUILD_CONFIG="../out/target/product/a16xm/obj/KERNEL_OBJ/build.config"
 # add custom build options to here
 # checkout kernel/build/build.sh to possible variables
 GKI_KERNEL_BUILD_OPTIONS=(
+    "LTO=thin"
     "SKIP_MRPROPER=1"
     "KMI_SYMBOL_LIST_STRICT_MODE=0"
     "ABI_DEFINITION="
