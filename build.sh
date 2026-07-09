@@ -1,5 +1,6 @@
 #!/bin/bash
 SCRIPT_DIR="$(dirname $(readlink -fq $0))"
+KERNEL_VERSION="$(cd kernel-5.15 && make kernelversion 2>/dev/null)"
 
 # init & update git submodules
 git submodule update --init --recursive || true
@@ -27,13 +28,13 @@ cd "${SCRIPT_DIR}/kernel-5.15" && \
     cd "${SCRIPT_DIR}"
 
 # generate localversion
-BUILD_KERNEL_VERSION=$(git log -1 --pretty=%h 2>/dev/null)
-if [ -z "$BUILD_KERNEL_VERSION" ]; then
-    export BUILD_KERNEL_VERSION="dev"
+BUILD_VERSION=$(git log -1 --pretty=%h 2>/dev/null)
+if [ -z "$BUILD_VERSION" ]; then
+    export BUILD_VERSION="dev"
 fi
 cat << EOF > "${SCRIPT_DIR}/custom_defconfigs/version_defconfig"
 CONFIG_LOCALVERSION_AUTO=n
-CONFIG_LOCALVERSION="-ravindu644-${BUILD_KERNEL_VERSION}"
+CONFIG_LOCALVERSION="-ravindu644-${BUILD_VERSION}"
 EOF
 
 # export environment variables from the samsung's build_kernel.sh
@@ -89,15 +90,27 @@ export CUSTOM_DEFCONFIGS_LIST
 build_kernel(){
     cd "${SCRIPT_DIR}/kernel"
 
-    set -e
     env "${GKI_KERNEL_BUILD_OPTIONS[@]}" ./build/build.sh && \
         cp \
         "${SCRIPT_DIR}/out/target/product/a16xm/obj/KERNEL_OBJ/kernel-5.15/arch/arm64/boot/Image"* \
         "${SCRIPT_DIR}/out/target/product/a16xm/obj/KERNEL_OBJ/dist/boot.img" \
         "${SCRIPT_DIR}/dist"
-    set +e
+    local status=$?
+
+    cd "${SCRIPT_DIR}"
+    return $status
+}
+
+pack_kernel() {
+    cd "${SCRIPT_DIR}/dist"
+
+    tar -cf "Droidspaces-KSUN-SM-A166P-${KERNEL_VERSION}-${BUILD_VERSION}.tar" boot.img && \
+        zip -9 "Droidspaces-KSUN-SM-A166P-${KERNEL_VERSION}-${BUILD_VERSION}.tar.zip" \
+        "Droidspaces-KSUN-SM-A166P-${KERNEL_VERSION}-${BUILD_VERSION}.tar" && \
+        rm -f "Droidspaces-KSUN-SM-A166P-${KERNEL_VERSION}-${BUILD_VERSION}.tar" boot.img
 
     cd "${SCRIPT_DIR}"
 }
 
-build_kernel
+build_kernel && \
+    pack_kernel
