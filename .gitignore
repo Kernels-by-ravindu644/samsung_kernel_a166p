@@ -10,7 +10,7 @@
 /custom_defconfigs/version_defconfig
 *.patch
 *.orig
-*.reg
+*.rej
 *.zip
 *.tar
 *.tar.gz
