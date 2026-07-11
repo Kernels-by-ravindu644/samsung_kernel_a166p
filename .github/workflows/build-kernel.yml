@@ -32,7 +32,7 @@ jobs:
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Droidspaces-KSUN-SM-A166P-${{ env.RELEASE_TAG }}
+          name: Droidspaces-KSUN-SuSFS-SM-A166P-${{ env.RELEASE_TAG }}
           path: dist/*.zip
 
       - name: Create Release

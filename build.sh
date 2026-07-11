@@ -104,10 +104,10 @@ build_kernel(){
 pack_kernel() {
     cd "${SCRIPT_DIR}/dist"
 
-    tar -cf "Droidspaces-KSUN-SM-A166P-${KERNEL_VERSION}-${BUILD_VERSION}.tar" boot.img && \
-        zip -9 "Droidspaces-KSUN-SM-A166P-${KERNEL_VERSION}-${BUILD_VERSION}.tar.zip" \
-        "Droidspaces-KSUN-SM-A166P-${KERNEL_VERSION}-${BUILD_VERSION}.tar" && \
-        rm -f "Droidspaces-KSUN-SM-A166P-${KERNEL_VERSION}-${BUILD_VERSION}.tar" boot.img
+    tar -cf "Droidspaces-KSUN-SuSFS-SM-A166P-${KERNEL_VERSION}-${BUILD_VERSION}.tar" boot.img && \
+        zip -9 "Droidspaces-KSUN-SuSFS-SM-A166P-${KERNEL_VERSION}-${BUILD_VERSION}.tar.zip" \
+        "Droidspaces-KSUN-SuSFS-SM-A166P-${KERNEL_VERSION}-${BUILD_VERSION}.tar" && \
+        rm -f "Droidspaces-KSUN-SuSFS-SM-A166P-${KERNEL_VERSION}-${BUILD_VERSION}.tar" boot.img
 
     cd "${SCRIPT_DIR}"
 }
