@@ -1,9 +1,18 @@
 #!/bin/bash
-SCRIPT_DIR="$(dirname $(readlink -fq $0))"
+# Copyright (c) 2026 ravindu644 <droidcasts@protonmail.com>
+# SPDX-License-Identifier: GPL-2.0-or-later
+#
+# Build script for SM-A166P kernel
+
+set -euo pipefail
+
+SCRIPT_DIR="$(dirname $(readlink -fq "$0"))"
+cd "${SCRIPT_DIR}"
+
 KERNEL_VERSION="$(cd kernel-5.15 && make kernelversion 2>/dev/null)"
 
 # init & update git submodules
-git submodule update --init --recursive || true
+git submodule update --init --recursive
 
 # download & install Samsung's ndk
 if [[ ! -d "${SCRIPT_DIR}/kernel/prebuilts" || ! -d "${SCRIPT_DIR}/prebuilts" ]]; then
@@ -90,15 +99,13 @@ export CUSTOM_DEFCONFIGS_LIST
 build_kernel(){
     cd "${SCRIPT_DIR}/kernel"
 
-    env "${GKI_KERNEL_BUILD_OPTIONS[@]}" ./build/build.sh && \
-        cp \
-        "${SCRIPT_DIR}/out/target/product/a16xm/obj/KERNEL_OBJ/kernel-5.15/arch/arm64/boot/Image"* \
-        "${SCRIPT_DIR}/out/target/product/a16xm/obj/KERNEL_OBJ/dist/boot.img" \
-        "${SCRIPT_DIR}/dist"
-    local status=$?
+    env "${GKI_KERNEL_BUILD_OPTIONS[@]}" ./build/build.sh
+    cp \
+    "${SCRIPT_DIR}/out/target/product/a16xm/obj/KERNEL_OBJ/kernel-5.15/arch/arm64/boot/Image"* \
+    "${SCRIPT_DIR}/out/target/product/a16xm/obj/KERNEL_OBJ/dist/boot.img" \
+    "${SCRIPT_DIR}/dist"
 
     cd "${SCRIPT_DIR}"
-    return $status
 }
 
 pack_kernel() {
